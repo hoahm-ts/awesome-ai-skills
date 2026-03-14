@@ -37,7 +37,8 @@ run:
 
 test:
 	go vet ./...
-	go test -coverprofile=coverage.out -covermode=atomic ./...
+	go test -coverprofile=coverage.out -covermode=atomic ./internal/... ./pkg/...
+	go tool cover -func=coverage.out | grep '^total:'
 
 test-cover:
 	go tool cover -html=coverage.out -o coverage.html

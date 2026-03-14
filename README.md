@@ -1,6 +1,7 @@
 # awesome-ai-skills
 
-[![codecov](https://codecov.io/gh/hoahm-ts/awesome-ai-skills/graph/badge.svg)](https://codecov.io/gh/hoahm-ts/awesome-ai-skills)
+[![CI](https://github.com/hoahm-ts/awesome-ai-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/hoahm-ts/awesome-ai-skills/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/hoahm-ts/awesome-ai-skills/badges/.github/badges/coverage.json)](https://github.com/hoahm-ts/awesome-ai-skills/actions/workflows/ci.yml)
 
 A curated collection of configuration files, instructions, and best practices for working with AI coding agents. This repository is a personal journey into the world of AI agents, where I share my experiences, insights, and lessons learned while exploring various AI skills and technologies.
 
