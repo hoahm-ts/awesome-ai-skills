@@ -18,7 +18,8 @@ repo root/
 │   └── skills/                      # Claude reusable skills
 └── .github/
     ├── copilot-instructions.md      # GitHub Copilot instructions
-    └── init-labels.sh               # Script to create standard GitHub issue labels
+    ├── init-labels.sh               # Script to create standard GitHub issue labels
+    └── PULL_REQUEST_TEMPLATE.md     # Default pull request template
 ```
 
 ## Overview
