@@ -1,0 +1,42 @@
+chore:
+  - head-branch: ["^chore/"]
+
+feature:
+  - head-branch: ["^feat/"]
+
+spec:
+  - head-branch: ["^spec/"]
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'openspec/**/*'
+      - '!openspec/changes/archive/**/*'
+
+spec-archive:
+  - changed-files:
+    - any-glob-to-any-file: ['openspec/changes/archive/**/*']
+
+fix:
+  - head-branch: ["^fix/", "^hotfix/"]
+
+docs:
+  - head-branch: ["^docs/"]
+  - changed-files:
+    - any-glob-to-any-file: ['docs/**/*']
+
+refactor:
+  - head-branch: ["^refactor/"]
+
+test:
+  - head-branch: ["^test/"]
+
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file: ['src/go.mod', 'src/go.sum']
+
+migration/database:
+  - changed-files:
+    - any-glob-to-any-file: ['src/migrations/**/*']
+
+api:
+  - changed-files:
+    - any-glob-to-any-file: ['api/**/*', 'openapi.yaml']
