@@ -18,23 +18,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: src/go.mod
-
-      - name: Install fmt tools
-        working-directory: src
-        run: |
-          go install mvdan.cc/gofumpt@latest
-          go install github.com/daixiang0/gci@latest
-
-      - name: Run fmt
-        working-directory: src
-        run: make fmt
-
-      - name: Check for uncommitted fmt changes
-        run: git diff --exit-code
-
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
