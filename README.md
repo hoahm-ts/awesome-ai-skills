@@ -2,6 +2,22 @@
 
 A curated collection of configuration files, instructions, and best practices for working with AI coding agents. This repository is a personal journey into the world of AI agents, where I share my experiences, insights, and lessons learned while exploring various AI skills and technologies.
 
+## Table of Contents
+
+- [Directory Structure](#directory-structure)
+- [Overview](#overview)
+- [Tech Stack](#tech-stack)
+- [Getting Started](#getting-started)
+- [Repository Initialisation](#repository-initialisation)
+  - [Prerequisites](#prerequisites)
+  - [1. Create standard issue labels](#1-create-standard-issue-labels)
+  - [2. Apply standard repository settings](#2-apply-standard-repository-settings)
+  - [3. Enable the labeler workflow](#3-enable-the-labeler-workflow)
+  - [4. Copy AI agent configuration files](#4-copy-ai-agent-configuration-files)
+  - [5. Configure branch rulesets](#5-configure-branch-rulesets)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Directory Structure
 
 ```
@@ -163,7 +179,7 @@ The workflow triggers on `pull_request_target` events (opened, synchronized, or 
 
 Copy the relevant files from this repository into your project (see the [Directory Structure](#directory-structure) table above) and customise them for your tech stack.
 
-### 4. Configure branch rulesets
+### 5. Configure branch rulesets
 
 The repository ships with two ruleset definition files under `.github/rulesets/` that encode the team's branch-protection policy. Import them through the GitHub UI or apply them via the GitHub CLI:
 
