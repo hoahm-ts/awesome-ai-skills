@@ -19,6 +19,7 @@ repo root/
 └── .github/
     ├── copilot-instructions.md      # GitHub Copilot instructions
     ├── init-labels.sh               # Script to create standard GitHub issue labels
+    ├── init-repo-settings.sh        # Script to apply standard repository settings
     ├── labeler.yml                  # Label-to-file-pattern mappings for the labeler workflow
     ├── release.yaml                 # Release drafter configuration
     ├── PULL_REQUEST_TEMPLATE.md     # Default pull request template
@@ -81,7 +82,43 @@ This creates the following labels:
 
 > **Note:** The script uses `--force` so it is safe to re-run at any time. However, any colour or description customisations you have made to a same-named label will be overwritten — review the script before re-running on a repository with hand-edited labels.
 
-### 2. Enable the labeler workflow
+### 2. Apply standard repository settings
+
+Run the script below to configure the repository's pull request, commit, and issue settings in one step:
+
+```bash
+bash .github/init-repo-settings.sh
+```
+
+This applies the following settings:
+
+**Pull Requests**
+
+| Setting | Value |
+|---|---|
+| Allow merge commits | ✅ Enabled |
+| Default merge commit message | Pull request title |
+| Allow squash merging | ✅ Enabled |
+| Default squash commit message | Pull request title |
+| Allow rebase merging | ✅ Enabled |
+| Always suggest updating pull request branches | ✅ Enabled |
+| Automatically delete head branches | ✅ Enabled |
+
+**Commits**
+
+| Setting | Value |
+|---|---|
+| Require contributors to sign off on web-based commits | ✅ Enabled |
+
+**Issues**
+
+| Setting | Value |
+|---|---|
+| Auto-close issues with merged linked pull requests | ✅ GitHub default — no script configuration needed. Use `Closes #<issue>` in PR description or commit message to link and auto-close an issue when the PR is merged. |
+
+> **Note:** The script is idempotent and safe to re-run at any time.
+
+### 3. Enable the labeler workflow
 
 The repository includes a GitHub Actions workflow that automatically applies labels to pull requests based on the files changed.
 
@@ -105,7 +142,7 @@ The workflow is defined in `.github/workflows/labeler.yml` and uses the mapping 
 
 The workflow triggers on `pull_request_target` events (opened, synchronized, or re-opened) and requires no additional configuration beyond the labels being present in the repository — run `init-labels.sh` first if you haven't already.
 
-### 3. Copy AI agent configuration files
+### 4. Copy AI agent configuration files
 
 Copy the relevant files from this repository into your project (see the [Directory Structure](#directory-structure) table above) and customise them for your tech stack.
 
