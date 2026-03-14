@@ -85,13 +85,13 @@ This creates the following labels:
 
 The repository includes a GitHub Actions workflow that automatically applies labels to pull requests based on the files changed.
 
-The workflow is defined in `.github/workflows/labeler.yml` and uses the mapping in `.github/labeler.yml`. Labels are applied according to the following rules:
+The workflow is defined in `.github/workflows/labeler.yml` and uses the mapping in `.github/labeler.yml`. Labels are applied according to the following example rules (customise the paths to match your project):
 
 | Label | Branch pattern | Changed files |
 |---|---|---|
 | `chore` | `chore/*` | — |
 | `feature` | `feat/*` | — |
-| `spec` | `spec/*` | `openspec/**/*` (excluding archive) |
+| `spec` | `spec/*` | `openspec/**/*` (excluding `openspec/changes/archive/**/*`) |
 | `spec-archive` | — | `openspec/changes/archive/**/*` |
 | `fix` | `fix/*`, `hotfix/*` | — |
 | `docs` | `docs/*` | `docs/**/*` |
@@ -100,6 +100,8 @@ The workflow is defined in `.github/workflows/labeler.yml` and uses the mapping 
 | `dependencies` | — | `src/go.mod`, `src/go.sum` |
 | `migration/database` | — | `src/migrations/**/*` |
 | `api` | — | `api/**/*`, `openapi.yaml` |
+
+> The file patterns above are templates; update them to match the directories and files in your repository.
 
 The workflow triggers on `pull_request_target` events (opened, synchronized, or re-opened) and requires no additional configuration beyond the labels being present in the repository — run `init-labels.sh` first if you haven't already.
 
