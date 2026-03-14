@@ -827,3 +827,1128 @@ Sharding distributes data across multiple independent PostgreSQL instances. Intr
   ```
 - Avoid cross-shard transactions; redesign data models to keep related entities on the same shard.
 - Consider [Citus](https://github.com/citusdata/citus) (PostgreSQL extension) for transparent sharding before implementing a custom shard router.
+## Kafka Best Practices (Go)
+
+> These guidelines apply to all Go services that produce or consume Kafka messages.
+> Follow them alongside the Go Style Guidelines above.
+
+### Topic Naming Conventions
+
+- Use a dot-separated, lowercase hierarchy that encodes ownership and intent:
+  ```
+  <domain>.<entity>.<event>
+  ```
+  Examples: `payments.order.created`, `inventory.product.updated`, `auth.user.deleted`.
+- Use only lowercase letters, digits, hyphens (`-`), and dots (`.`). Never use underscores within a segment or uppercase — some tooling treats `.` and `_` differently, and mixed case causes confusion across teams. The sole exception is a leading `_` on internal topics (see below).
+- Keep each segment short and singular: `order` not `orders`, `product` not `products`. The domain segment may be plural when the service name is conventionally plural (e.g. `payments`).
+- Dead-letter topics mirror their source topic with a `.dlt` suffix:
+  ```
+  payments.order.created.dlt
+  ```
+- Retry topics (when using staged retries) append `.retry.<n>`:
+  ```
+  payments.order.created.retry.1
+  payments.order.created.retry.2
+  ```
+- Internal or compacted state topics (e.g. changelog topics for Kafka Streams) use a `_` prefix to signal they are infrastructure-level and not consumed directly by application code:
+  ```
+  _payments.order.state
+  ```
+- Declare topic names as typed constants in a shared `ports` or `topics` package; never hard-code raw strings across services:
+  ```go
+  // ports/topics.go
+  const (
+    TopicOrderCreated    = "payments.order.created"
+    TopicOrderCreatedDLT = "payments.order.created.dlt"
+  )
+  ```
+- Document each topic in the codebase with an inline comment: the event schema it carries, the producing service, and the expected consumers.
+
+### Message Keys & Partitioning
+
+- Use a stable, deterministic business key (e.g. entity ID or a composite key) as the message key to route all events for the same entity to the same partition, preserving total order for that entity:
+  ```go
+  // Stable composite key — always routes to the same partition.
+  key := fmt.Sprintf("%s:%s", orderID, customerID)
+  ```
+- Keep key cardinality proportional to the partition count: too few unique keys leave partitions underutilised; too many unique keys cannot improve ordering and may create hot partitions.
+- Use `null` keys only for purely parallel, order-independent workloads (e.g. fire-and-forget notifications). Messages with `null` keys are distributed round-robin across partitions.
+- Never use random or time-based values (e.g. UUIDs, timestamps) as keys — they destroy ordering guarantees and create uneven partition load over time.
+- Encode keys as UTF-8 strings (entity ID, or fields joined with `:`) rather than opaque bytes to aid debugging and re-processing.
+- Scale consumer group instances up to — but never beyond — the partition count; extra instances remain idle and waste resources.
+- To achieve parallel processing within a topic, increase the partition count at topic creation time or use `null` keys where ordering is not required. Partition counts cannot be reduced after creation.
+
+### Client Library
+
+- Pick one library and use it consistently across all services: [franz-go](https://github.com/twmb/franz-go) (recommended for its idiomatic Go API and first-class context support) or [confluent-kafka-go](https://github.com/confluentinc/confluent-kafka-go).
+- Wrap the Kafka client behind a port interface so it can be replaced or mocked without touching domain code:
+  ```go
+  // ports/kafka.go
+  type Producer interface {
+    Produce(ctx context.Context, msg *Message) error
+    Close() error
+  }
+
+  type Consumer interface {
+    Subscribe(topics []string) error
+    Poll(ctx context.Context) (*Message, error)
+    CommitOffsets(ctx context.Context) error
+    Close() error
+  }
+  ```
+- Register concrete client implementations in the composition root; never instantiate them inside domain packages.
+
+### Producer
+
+- Use `acks=all` (or `RequiredAcks: kgo.AllISRAcks()`) to ensure durable writes to all in-sync replicas.
+- Enable idempotent producers to prevent duplicate messages on retry (`idempotent: true` / `kgo.ProducerIdempotent()`).
+- Never fire-and-forget produce calls — always check the delivery error before advancing:
+  ```go
+  if err := producer.Produce(ctx, msg); err != nil {
+    return fmt.Errorf("produce to %s: %w", msg.Topic, err)
+  }
+  ```
+- Key messages consistently: use a stable business key (e.g. entity ID) to preserve ordering within a partition.
+- Tune `linger.ms` and `batch.size` deliberately: lower values favour latency; higher values favour throughput. Document your chosen values and the reason.
+- Enable compression at the producer level to reduce broker storage and network I/O. Prefer `snappy` for balanced CPU/ratio; use `zstd` for maximum compression on high-volume topics:
+  ```go
+  kgo.ProducerBatchCompression(kgo.SnappyCompression())
+  ```
+- Pass `context.Context` to every produce call to support timeouts and cancellation:
+  ```go
+  ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+  defer cancel()
+  if err := producer.Produce(ctx, msg); err != nil { ... }
+  ```
+
+### Consumer
+
+- **Consumer Groups**: assign a unique `group.id` per logical consumer (one consumer group per independent processing pipeline). Never share a group ID between unrelated services — this creates split-brain processing where each service receives only a fraction of messages.
+- Commit offsets **only after** processing succeeds to guarantee at-least-once delivery; never auto-commit.
+- Handle rebalances explicitly: flush or checkpoint in-flight work inside `ConsumerGroupHandler.Cleanup` before returning, so no messages are lost mid-batch.
+- Set `max.poll.interval.ms` long enough to cover the worst-case processing time; breach causes the consumer to leave the group and trigger rebalance.
+- **Batch Fetching**: tune `fetch.min.bytes` and `fetch.max.wait.ms` to control the trade-off between latency and throughput. Higher `fetch.min.bytes` reduces the number of fetch requests but increases end-to-end latency; set `fetch.max.wait.ms` as an upper bound:
+  ```go
+  kgo.FetchMinBytes(1<<10),        // 1 KiB minimum before returning
+  kgo.FetchMaxWait(500*time.Millisecond),
+  ```
+- **Multi-threaded Consumers**: process messages in parallel using a fixed goroutine pool fed by a bounded channel. Keep the poller single-threaded (Kafka partition assignment is single-threaded) and fan out to workers:
+  ```go
+  work := make(chan *kgo.Record, cfg.WorkerBuffer)
+
+  go poll(ctx, client, work) // single poller goroutine
+
+  var wg sync.WaitGroup
+  for i := 0; i < cfg.Workers; i++ {
+    wg.Add(1)
+    go func() {
+      defer wg.Done()
+      for rec := range work {
+        process(ctx, rec)
+      }
+    }()
+  }
+  ```
+- **Context Usage**: pass a `context.Context` derived from the application lifecycle into every poll and process call. Use `context.WithTimeout` for individual message processing to enforce per-message deadlines and prevent slow consumers from blocking the entire group:
+  ```go
+  processCtx, cancel := context.WithTimeout(ctx, cfg.ProcessingTimeout)
+  defer cancel()
+  if err := handler.Handle(processCtx, rec); err != nil { ... }
+  ```
+- Always perform a **graceful shutdown**: stop polling new messages → drain the work channel → commit offsets → close the client (see [Graceful Shutdown](#graceful-shutdown) below).
+
+### Error Handling
+
+- Distinguish transient errors (network timeouts, leader elections) from fatal errors (schema decode failure, business rule violation):
+  - **Transient**: retry with exponential back-off.
+  - **Fatal**: route the raw message to a dead-letter topic (DLT) with headers describing the failure; do not retry.
+- Never silently drop messages — every failure must be either retried, sent to the DLT, or result in an explicit alert.
+- Wrap Kafka errors with context before returning:
+  ```go
+  // Bad:  return err
+  // Good: return fmt.Errorf("consume %s partition %d offset %d: %w", topic, partition, offset, err)
+  ```
+- Include structured fields on every error log: `topic`, `partition`, `offset`, `consumer_group`, and `error`.
+
+### Schema & Serialization
+
+- Use a schema registry (Confluent Schema Registry or Apicurio) with Avro, Protobuf, or JSON Schema for all production topics.
+- Design schemas for **backwards and forwards compatibility**: add optional fields; never remove or rename existing fields without a migration plan.
+- Annotate Go structs with serialization tags that match the schema field names exactly:
+  ```go
+  type OrderCreated struct {
+    OrderID   string `json:"order_id"   avro:"order_id"`
+    CreatedAt int64  `json:"created_at" avro:"created_at"` // Unix millis
+  }
+  ```
+- Keep schema version metadata (subject, version, schema ID) in the message headers rather than inside the payload.
+
+### Observability
+
+- Emit consumer lag per topic-partition as a gauge metric (label: `topic`, `partition`, `consumer_group`). Alert when lag exceeds a defined threshold.
+- Record processing latency as a histogram for every consumed message (label: `topic`, `consumer_group`, `status`).
+- Propagate trace context via message headers using the [W3C Trace Context](https://www.w3.org/TR/trace-context/) format; extract it at the consumer and start a child span for each message:
+  ```go
+  ctx = otel.GetTextMapPropagator().Extract(ctx, kafkaHeaderCarrier(msg.Headers))
+  ctx, span := tracer.Start(ctx, "consume "+msg.Topic)
+  defer span.End()
+  ```
+- Log at least: `topic`, `partition`, `offset`, `key`, `consumer_group`, `trace_id`, and processing latency at the DEBUG level on success and ERROR level on failure.
+
+### Testing
+
+- Unit-test domain logic and adapter code against the `Producer`/`Consumer` interfaces using fakes or mocks — never connect to a real broker in unit tests.
+- Use [`kfake`](https://pkg.go.dev/github.com/twmb/franz-go/pkg/kfake) (franz-go's in-process broker) or [`testcontainers-go`](https://github.com/testcontainers/testcontainers-go) for integration tests that require a real Kafka wire protocol.
+- In integration tests, assert:
+  - Messages are produced to the correct topic and partition key.
+  - Offsets are committed only after successful processing.
+  - Fatal messages are routed to the DLT with the expected error headers.
+- Never use a shared broker state between test cases — reset or re-create topics between runs to keep tests deterministic.
+
+### Configuration
+
+- Consolidate all Kafka settings in a single, explicit config struct; avoid scattered `os.Getenv` calls across packages:
+  ```go
+  type KafkaConfig struct {
+    Brokers         []string      `yaml:"brokers"`
+    GroupID         string        `yaml:"group_id"`
+    Topics          []string      `yaml:"topics"`
+    DeadLetterTopic string        `yaml:"dead_letter_topic"`
+    TLSEnabled      bool          `yaml:"tls_enabled"`
+    SASLMechanism   string        `yaml:"sasl_mechanism"`
+    SessionTimeout  time.Duration `yaml:"session_timeout"`
+    Workers         int           `yaml:"workers"`
+    WorkerBuffer    int           `yaml:"worker_buffer"`
+  }
+  ```
+- Enable TLS and a SASL mechanism (`SCRAM-SHA-512` or `OAUTHBEARER`) in all non-local environments; never use plaintext in staging or production.
+- Document every configuration knob with an inline comment describing the default, valid range, and impact.
+
+### Graceful Shutdown
+
+- On receiving a termination signal, follow this sequence to avoid message loss:
+  1. Cancel the consumer context to stop polling new messages.
+  2. Wait for in-flight processing goroutines to finish (use `sync.WaitGroup`).
+  3. Commit the final batch of offsets.
+  4. Close the Kafka client.
+- Encode this sequence using the goroutine lifecycle pattern from the [Goroutines](#goroutines) section:
+  ```go
+  func (c *Consumer) Run(ctx context.Context) error {
+    var wg sync.WaitGroup
+    work := make(chan *Message, c.cfg.WorkerBuffer)
+
+    wg.Add(1)
+    go func() {
+      defer wg.Done()
+      c.poll(ctx, work) // stops when ctx is cancelled
+    }()
+
+    for i := 0; i < c.cfg.Workers; i++ {
+      wg.Add(1)
+      go func() {
+        defer wg.Done()
+        c.process(work)
+      }()
+    }
+
+    <-ctx.Done()     // wait for external cancel
+    close(work)      // signal workers to drain and exit
+    wg.Wait()        // wait for all goroutines to finish
+    return c.client.CommitOffsets(context.Background())
+  }
+  ```
+- Set a shutdown deadline (e.g. 30 s) by passing a timeout context to `CommitOffsets`; log an error and exit if the deadline is exceeded.
+## GoCraft/Work Best Practices (Go)
+
+> These guidelines apply to all background job processing that uses [GoCraft/Work](https://github.com/gocraft/work) as the job queue library.
+
+### Worker Pool Lifecycle
+
+- Create the worker pool in the composition root and pass it as a dependency — never create a pool inside a domain package.
+- Always call `pool.Stop()` on application shutdown to drain in-flight jobs before the process exits:
+  ```go
+  pool := work.NewWorkerPool(AppContext{}, concurrency, namespace, redisPool)
+  // ... register jobs ...
+  pool.Start()
+
+  quit := make(chan os.Signal, 1)
+  signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+  <-quit
+
+  pool.Stop() // blocks until all in-flight jobs finish
+  ```
+- Use a single `work.Pool` (Redis connection pool) per process; share it between the enqueuer and the worker pool.
+
+### Job Registration
+
+- Register all job handlers before calling `pool.Start()`.
+- Group job registrations in a single, dedicated function (e.g. `RegisterJobs(pool *work.WorkerPool)`) inside the wiring layer — not scattered across domain packages.
+- Use `JobOptions` to specify concurrency, max retries, and backoff at registration time rather than hard-coding them inline:
+  ```go
+  pool.JobWithOptions("send_email", work.JobOptions{
+      MaxFails:    5,
+      Concurrency: 10,
+  }, handler.SendEmail)
+  ```
+
+### Handler Signatures and Argument Passing
+
+- All job handlers must match the signature `func(job *work.Job) error`.
+- Deserialise job arguments into a strongly typed struct at the top of the handler; return an error immediately if deserialisation fails:
+  ```go
+  type SendEmailArgs struct {
+      UserID  int64  `json:"user_id"`
+      Subject string `json:"subject"`
+  }
+
+  func (h *EmailHandler) SendEmail(job *work.Job) error {
+      var args SendEmailArgs
+      if err := job.UnmarshalPayload(&args); err != nil {
+          return fmt.Errorf("unmarshal payload: %w", err)
+      }
+      // ...
+  }
+  ```
+- Never read raw `job.Args` map entries directly in business logic — centralise argument extraction in a helper or unmarshal into a typed struct.
+
+### Enqueuing Jobs
+
+- Wrap `work.Enqueuer` behind an interface so callers depend on the interface rather than the concrete type:
+  ```go
+  type JobEnqueuer interface {
+      Enqueue(jobName string, args work.Q) (*work.Job, error)
+      EnqueueIn(jobName string, secondsFromNow int64, args work.Q) (*work.ScheduledJob, error)
+  }
+  ```
+- Use `work.Q` (a `map[string]interface{}`) only at the enqueuing boundary; convert to typed structs as soon as the job is consumed.
+- Prefer `EnqueueUnique` when duplicate jobs must be suppressed (e.g. processing the same resource multiple times within a short window).
+
+### Error Handling and Retries
+
+- Return a non-nil error from a handler to signal that the job should be retried according to its `MaxFails` / backoff policy.
+- Return `nil` to mark the job as successfully completed — even if the operation was a no-op.
+- Use sentinel errors (exported `var Err...`) when callers or middleware need to distinguish failure modes:
+  ```go
+  var ErrSkipRetry = errors.New("skip retry")
+  ```
+- Do not `panic` inside a handler; rely on the middleware panic-recovery layer instead.
+
+### Middleware
+
+- Register middleware on the pool (not on individual handlers) for cross-cutting concerns: structured logging, panic recovery, metrics, and distributed tracing.
+- Keep each middleware focused on a single concern. Chain middleware in this order:
+  1. Panic recovery (outermost — must always run)
+  2. Distributed trace / request-ID injection
+  3. Structured logging (log job name, duration, and outcome)
+  4. Metrics / instrumentation
+- Access the job's name and arguments via `job.Name` and `job.Args` inside middleware — do not re-parse the payload.
+
+### Concurrency and Throttling
+
+- Set per-job `Concurrency` at registration time based on downstream capacity (DB connections, external API rate limits).
+- The pool-level `concurrency` argument is the global cap; per-job concurrency is an additional constraint.
+- Avoid setting global concurrency higher than the Redis connection pool size to prevent connection starvation.
+
+### Observability
+
+- Log the job name, enqueue time, attempt number (`job.Fails`), and final outcome (success or error) at the middleware layer.
+- Emit a counter metric for `job.completed` and `job.failed` tagged with the job name.
+- Include a correlation/request ID in job arguments so logs across enqueue and execute can be correlated.
+
+### Testing Job Handlers
+
+- Unit-test handlers by constructing a `*work.Job` directly — no Redis required:
+  ```go
+  func TestSendEmail(t *testing.T) {
+      job := &work.Job{}
+      job.SetArg("user_id", int64(42))
+      job.SetArg("subject", "Hello")
+
+      h := &EmailHandler{mailer: &fakeMailer{}}
+      err := h.SendEmail(job)
+      require.NoError(t, err)
+  }
+  ```
+- Use fakes or mocks for all external dependencies (mailers, DB, HTTP clients) injected into the handler struct.
+- Test retry behaviour by asserting that the handler returns a non-nil error when a dependency fails.
+- Integration tests that require Redis should use a dedicated test Redis instance and clean up all keys with a `t.Cleanup` function.
+## Temporal Best Practices (Go)
+
+> This section covers best practices for building reliable, maintainable workflows with [Temporal](https://docs.temporal.io/) in Go.
+
+### Workflow Design — Determinism
+
+Temporal replays workflow history to reconstruct state. Any non-deterministic operation in a workflow function will cause a non-deterministic error during replay.
+
+**Rules:**
+- Never call `time.Now()` or `time.Sleep()` directly — use `workflow.Now(ctx)` and `workflow.Sleep(ctx, d)`.
+- Never use `math/rand` directly — use `workflow.NewRandom(ctx)` for random values.
+- Never read from environment variables, files, or external state inside a workflow function.
+- Never spawn raw goroutines (`go func() {...}`) — use `workflow.Go(ctx, func(ctx workflow.Context) {...})`.
+- Never use `context.Context` as workflow parameters — use `workflow.Context` instead.
+- Never use `select` with real channels — use `workflow.NewSelector(ctx)` instead.
+- All side-effecting or non-deterministic logic must be pushed into Activities.
+
+```go
+// Bad — not deterministic
+func MyWorkflow(ctx workflow.Context) error {
+    t := time.Now()         // non-deterministic
+    _ = os.Getenv("KEY")    // non-deterministic
+    return nil
+}
+
+// Good
+func MyWorkflow(ctx workflow.Context) error {
+    t := workflow.Now(ctx)  // deterministic replay-safe clock
+    _ = workflow.SideEffect(ctx, func(ctx workflow.Context) interface{} {
+        return os.Getenv("KEY") // side effect captured once
+    })
+    return nil
+}
+```
+
+### Activity Design
+
+Activities are the unit of work that performs all I/O and non-deterministic operations. They must be designed to be safe to retry.
+
+- **Idempotency**: every Activity must be safe to run more than once with the same inputs. Use idempotency keys when calling external APIs. For non-idempotent operations (e.g. charging a card), set `MaximumAttempts: 1` and apply exactly-once execution patterns (unique identifiers or deduplication strategies) to prevent duplicate side effects.
+- **Heartbeating**: long-running Activities must call `activity.RecordHeartbeat(ctx, details...)` periodically so the worker can detect failures and resume from the last checkpoint.
+- **Context propagation**: always accept `context.Context` as the first parameter so that Temporal can cancel the Activity on timeout.
+- **Return meaningful errors**: return non-retryable errors with `temporal.NewNonRetryableApplicationError` for permanent failures; return retryable errors (or plain `error`) for transient failures.
+
+```go
+func ProcessOrderActivity(ctx context.Context, orderID string) error {
+    // Heartbeat for long-running work
+    activity.RecordHeartbeat(ctx, "starting")
+
+    if err := externalClient.Process(ctx, orderID); err != nil {
+        if isPermanentFailure(err) {
+            // Temporal will NOT retry this
+            return temporal.NewNonRetryableApplicationError(
+                "permanent failure processing order",
+                "PermanentProcessError",
+                err,
+            )
+        }
+        return err // Temporal will retry
+    }
+    return nil
+}
+```
+
+### Worker Registration
+
+- Register all Workflows and Activities in the composition root / `main()` — never inside domain packages.
+- Group registrations by task queue; each `worker.Worker` instance must correspond to exactly one task queue.
+- Verify that every Workflow and Activity used in production is registered on at least one worker.
+
+```go
+w := worker.New(temporalClient, "order-processing", worker.Options{})
+w.RegisterWorkflow(OrderWorkflow)
+w.RegisterActivity(ProcessOrderActivity)
+w.RegisterActivity(NotifyCustomerActivity)
+```
+
+### Error Handling
+
+Use Temporal's typed error hierarchy to distinguish between retryable and non-retryable failures:
+
+| Error type | Retried by default | Use when |
+|---|---|---|
+| `temporal.ApplicationError` (retryable) | Yes | Transient failures; caller does not need to match the type |
+| `temporal.ApplicationError` (non-retryable) | No | Permanent / business-rule failures |
+| `temporal.CanceledError` | No | Activity/workflow was cancelled |
+| `temporal.TimeoutError` | No | Execution exceeded a deadline |
+
+Unwrap Temporal errors with `errors.As` to inspect the type at the calling layer:
+
+```go
+var appErr *temporal.ApplicationError
+if errors.As(err, &appErr) {
+    log.Error("activity failed", zap.String("type", appErr.Type()), zap.Error(appErr))
+}
+```
+
+### Workflow Versioning
+
+When changing workflow logic that may affect in-flight executions, use `workflow.GetVersion` to maintain backward compatibility. Never remove a `GetVersion` check until all workflows that used the old branch have completed.
+
+```go
+const (
+    _featureAddNotification = "add-notification"
+    _defaultVersion         = workflow.DefaultVersion
+    _versionOne             = 1
+)
+
+func OrderWorkflow(ctx workflow.Context, order Order) error {
+    v := workflow.GetVersion(ctx, _featureAddNotification, _defaultVersion, _versionOne)
+
+    ao := workflow.ActivityOptions{StartToCloseTimeout: 30 * time.Second}
+    ctx = workflow.WithActivityOptions(ctx, ao)
+
+    if err := workflow.ExecuteActivity(ctx, ProcessOrderActivity, order.ID).Get(ctx, nil); err != nil {
+        return fmt.Errorf("process order: %w", err)
+    }
+
+    if v >= _versionOne {
+        if err := workflow.ExecuteActivity(ctx, NotifyCustomerActivity, order.ID).Get(ctx, nil); err != nil {
+            return fmt.Errorf("notify customer: %w", err)
+        }
+    }
+    return nil
+}
+```
+
+### Signals, Queries, and Updates
+
+- **Signals** are fire-and-forget messages delivered to a running workflow. Handle them with `workflow.GetSignalChannel(ctx, name).Receive(ctx, &val)` or via a `workflow.NewSelector`.
+- **Queries** must be read-only and must not modify workflow state. Register with `workflow.SetQueryHandler`.
+- **Updates** (Temporal ≥ 1.21) combine signal delivery and synchronous validation. Use `workflow.SetUpdateHandlerWithOptions` and provide a validator function to reject invalid inputs before they are written to history.
+- Name signals, queries, and updates as lowercase kebab-case strings (e.g. `"cancel-order"`, `"get-status"`).
+
+```go
+const _signalCancelOrder = "cancel-order"
+
+func OrderWorkflow(ctx workflow.Context, order Order) error {
+    cancelCh := workflow.GetSignalChannel(ctx, _signalCancelOrder)
+
+    ao := workflow.ActivityOptions{StartToCloseTimeout: 30 * time.Second}
+    ctx = workflow.WithActivityOptions(ctx, ao)
+
+    sel := workflow.NewSelector(ctx)
+    var processErr error
+    actFuture := workflow.ExecuteActivity(ctx, ProcessOrderActivity, order.ID)
+    sel.AddFuture(actFuture, func(f workflow.Future) {
+        processErr = f.Get(ctx, nil)
+    })
+    sel.AddReceive(cancelCh, func(c workflow.ReceiveChannel, _ bool) {
+        var reason string
+        c.Receive(ctx, &reason)
+        processErr = temporal.NewCanceledError(reason)
+    })
+    sel.Select(ctx)
+
+    return processErr
+}
+```
+
+### Retries and Timeouts
+
+Always configure timeouts and retry policies explicitly — never rely on Temporal's unlimited defaults in production.
+
+**Timeout options:**
+
+| Option | Purpose | Guideline |
+|---|---|---|
+| `StartToCloseTimeout` | Max time for a single Activity attempt | Required; must be greater than the upstream service's own request timeout |
+| `ScheduleToCloseTimeout` | Max total time including all retries | Must accommodate the worst-case cumulative retry duration; set for Activities with SLA requirements |
+| `HeartbeatTimeout` | Max time between heartbeats | Required for long-running Activities |
+| `WorkflowExecutionTimeout` | Max lifetime of an entire workflow | Set to prevent unbounded open workflows |
+| `WorkflowRunTimeout` | Max lifetime of a single workflow run | Useful for workflows that use `ContinueAsNew` |
+
+**Timeout rules:**
+- `StartToCloseTimeout` must be greater than the upstream service's own request timeout to avoid races where Temporal cancels the Activity before the service has a chance to respond.
+- `ScheduleToCloseTimeout` must cover the worst-case cumulative retry scenario: all retry attempts plus the wait periods between them. Use the [Temporal retry simulator](https://temporal-time.netlify.app/) or the [Temporal Activity Retry Simulator](https://docs.temporal.io/develop/activity-retry-simulator) to calculate a safe value before setting this in production.
+
+**Exponential backoff strategy:**
+- Use a `BackoffCoefficient` between **1.5 and 2.0** to balance retry frequency against resource consumption.
+- Cap `MaximumInterval` based on the nature of the upstream:
+  - HTTP / lightweight internal APIs: **10–30 seconds**
+  - Slow or unstable third-party services: **30–60 seconds**
+- For **fast-responding upstreams**: use a short `InitialInterval` (1–2 s) with a coefficient of 2.0.
+- For **slow or unstable upstreams**: use a longer `InitialInterval` (2–5 s) and a larger `MaximumInterval` (30–60 s).
+
+**Retry limits:**
+- Avoid unlimited retries (`MaximumAttempts: 0`) for critical external calls — this risks resource exhaustion and cascading failures.
+- Set a finite `MaximumAttempts` or a `ScheduleToCloseTimeout` with a compensation path for failure scenarios.
+- `MaximumAttempts` **includes the initial attempt**:
+  - `1` → no retries (execute once and stop).
+  - `0` → unlimited retries (use only for non-critical, fully idempotent operations).
+- For **single-shot operations** (e.g. charging a payment), set `MaximumAttempts: 1` and ensure strong alerting for immediate failure notification.
+
+```go
+// Fast upstream (e.g. internal HTTP service): short intervals, higher coefficient
+fastAO := workflow.ActivityOptions{
+    StartToCloseTimeout:    10 * time.Second,
+    ScheduleToCloseTimeout: 2 * time.Minute,
+    RetryPolicy: &temporal.RetryPolicy{
+        InitialInterval:        time.Second,
+        BackoffCoefficient:     2.0,
+        MaximumInterval:        30 * time.Second,
+        MaximumAttempts:        5,
+        NonRetryableErrorTypes: []string{"PermanentProcessError"},
+    },
+}
+
+// Slow / unstable upstream (e.g. third-party payment provider): longer intervals, lower coefficient
+slowAO := workflow.ActivityOptions{
+    StartToCloseTimeout:    60 * time.Second,
+    ScheduleToCloseTimeout: 10 * time.Minute,
+    HeartbeatTimeout:       15 * time.Second,
+    RetryPolicy: &temporal.RetryPolicy{
+        InitialInterval:        3 * time.Second,
+        BackoffCoefficient:     1.5,
+        MaximumInterval:        60 * time.Second,
+        MaximumAttempts:        4,
+        NonRetryableErrorTypes: []string{"PermanentProcessError"},
+    },
+}
+
+// Single-shot operation (e.g. charge a payment — must not retry)
+singleShotAO := workflow.ActivityOptions{
+    StartToCloseTimeout: 30 * time.Second,
+    RetryPolicy: &temporal.RetryPolicy{
+        MaximumAttempts: 1,
+    },
+}
+```
+
+### Activity Retry Patterns
+
+Choose a retry pattern based on the nature of the operation and the acceptable failure mode.
+
+| Pattern | When to use | Key config |
+|---|---|---|
+| **Standard retry** | Transient failures on idempotent calls (HTTP timeouts, rate limits, temporary unavailability) | `MaximumAttempts > 1`, exponential backoff |
+| **Single-shot (no retry)** | Non-idempotent operations where a duplicate execution causes harm (e.g. charge a card, send an SMS) | `MaximumAttempts: 1`, strong alerting |
+| **Retry with compensation** | Retries are exhausted and a partial side effect must be rolled back (saga pattern) | `MaximumAttempts > 1` + a compensation Activity in the failure path |
+| **Heartbeat-based resume** | Long-running operations that can checkpoint progress and resume from the last known state instead of restarting from scratch | `HeartbeatTimeout` set, checkpoint stored in heartbeat details |
+| **Manual retry via signal** | Human approval or intervention is required before a retry (e.g. fraud review, operator gate) | `MaximumAttempts: 1`, workflow waits for a signal before re-executing |
+| **Polling with delay** | External resource is not yet ready and must be re-checked after a fixed wait (e.g. async job status, eventual-consistency read) | `workflow.Sleep` between attempts inside the workflow loop |
+| **Custom retry logic in Activity** | Built-in retry policy is too coarse; different error types need different back-off or fallback strategies | Manual loop with typed error inspection inside the Activity |
+
+> **Tip:** See [temporalio/samples-go](https://github.com/temporalio/samples-go) for runnable examples of these and other patterns in Go.
+
+#### Standard Retry
+
+Use for any idempotent call that may experience transient failures. Temporal retries the Activity automatically using the configured policy.
+
+```go
+// Use case: calling an internal inventory service that may be temporarily overloaded.
+ao := workflow.ActivityOptions{
+    StartToCloseTimeout:    10 * time.Second,
+    ScheduleToCloseTimeout: 2 * time.Minute,
+    RetryPolicy: &temporal.RetryPolicy{
+        InitialInterval:        time.Second,
+        BackoffCoefficient:     2.0,
+        MaximumInterval:        30 * time.Second,
+        MaximumAttempts:        5,
+        NonRetryableErrorTypes: []string{"ItemNotFound"},
+    },
+}
+ctx = workflow.WithActivityOptions(ctx, ao)
+if err := workflow.ExecuteActivity(ctx, ReserveInventoryActivity, orderID).Get(ctx, nil); err != nil {
+    return fmt.Errorf("reserve inventory: %w", err)
+}
+```
+
+#### Single-Shot (No Retry)
+
+Use for non-idempotent operations. Duplicate execution would cause real harm (double charge, duplicate notification). Pair with strong alerting so failures surface immediately.
+
+```go
+// Use case: charging a customer's payment method — must never execute twice.
+ao := workflow.ActivityOptions{
+    StartToCloseTimeout: 30 * time.Second,
+    RetryPolicy: &temporal.RetryPolicy{
+        MaximumAttempts: 1, // no retries
+    },
+}
+ctx = workflow.WithActivityOptions(ctx, ao)
+if err := workflow.ExecuteActivity(ctx, ChargePaymentActivity, order).Get(ctx, nil); err != nil {
+    // Handle the failure explicitly — do not silently swallow it.
+    return fmt.Errorf("charge payment: %w", err)
+}
+```
+
+#### Retry with Compensation (Saga)
+
+Use when retries are exhausted and partial state must be rolled back. Execute a compensation Activity to undo any side effects committed before the failure.
+
+```go
+// Use case: reserve inventory then charge payment; roll back the reservation if payment fails.
+reserveCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+    StartToCloseTimeout: 10 * time.Second,
+    RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 3},
+})
+if err := workflow.ExecuteActivity(reserveCtx, ReserveInventoryActivity, orderID).Get(ctx, nil); err != nil {
+    return fmt.Errorf("reserve inventory: %w", err)
+}
+
+chargeCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+    StartToCloseTimeout: 30 * time.Second,
+    RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+})
+if err := workflow.ExecuteActivity(chargeCtx, ChargePaymentActivity, order).Get(ctx, nil); err != nil {
+    // Compensate: release the reservation that was already committed.
+    compensateCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+        StartToCloseTimeout: 10 * time.Second,
+        RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 5},
+    })
+    _ = workflow.ExecuteActivity(compensateCtx, ReleaseInventoryActivity, orderID).Get(ctx, nil)
+    return fmt.Errorf("charge payment: %w", err)
+}
+```
+
+#### Heartbeat-Based Resume
+
+Use for long-running Activities (file processing, batch jobs) that can record checkpoints. On retry, resume from the last checkpoint instead of restarting from scratch.
+
+```go
+// Use case: processing a large file page by page; resume from the last committed page on retry.
+func ProcessFileActivity(ctx context.Context, fileID string) error {
+    // Recover the last checkpoint from a previous attempt, if any.
+    startPage := 0
+    if details := activity.GetInfo(ctx).HeartbeatDetails; details != nil {
+        _ = converter.GetDefaultDataConverter().FromPayloads(details, &startPage)
+    }
+
+    for page := startPage; ; page++ {
+        if err := ctx.Err(); err != nil {
+            return err // respect cancellation / timeout
+        }
+        done, err := processPage(ctx, fileID, page)
+        if err != nil {
+            return err
+        }
+        // Checkpoint progress so the next attempt can resume here.
+        activity.RecordHeartbeat(ctx, page+1)
+        if done {
+            return nil
+        }
+    }
+}
+
+// Activity options: heartbeat timeout shorter than the per-page processing time.
+ao := workflow.ActivityOptions{
+    StartToCloseTimeout:    30 * time.Minute,
+    ScheduleToCloseTimeout: 2 * time.Hour,
+    HeartbeatTimeout:       30 * time.Second,
+    RetryPolicy: &temporal.RetryPolicy{
+        InitialInterval:    5 * time.Second,
+        BackoffCoefficient: 2.0,
+        MaximumInterval:    60 * time.Second,
+        MaximumAttempts:    10,
+    },
+}
+```
+
+#### Manual Retry via Signal
+
+Use when a human or external system must review a failure before the operation is retried. The workflow pauses and waits for an approval signal rather than retrying automatically.
+
+```go
+const (
+    _signalRetryApproved = "retry-approved"
+    _signalRetryAborted  = "retry-aborted"
+)
+
+// Use case: a fraud-check Activity failed; a human must approve before retrying.
+func OrderWorkflow(ctx workflow.Context, order Order) error {
+    ao := workflow.ActivityOptions{
+        StartToCloseTimeout: 10 * time.Second,
+        RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+    }
+    ctx = workflow.WithActivityOptions(ctx, ao)
+
+    if err := workflow.ExecuteActivity(ctx, FraudCheckActivity, order).Get(ctx, nil); err != nil {
+        // Notify an operator and wait for a manual decision.
+        _ = workflow.ExecuteActivity(ctx, NotifyOperatorActivity, order.ID, err.Error()).Get(ctx, nil)
+
+        approvedCh := workflow.GetSignalChannel(ctx, _signalRetryApproved)
+        abortedCh := workflow.GetSignalChannel(ctx, _signalRetryAborted)
+
+        sel := workflow.NewSelector(ctx)
+        var approved bool
+        sel.AddReceive(approvedCh, func(c workflow.ReceiveChannel, _ bool) {
+            c.Receive(ctx, nil)
+            approved = true
+        })
+        sel.AddReceive(abortedCh, func(c workflow.ReceiveChannel, _ bool) {
+            c.Receive(ctx, nil)
+        })
+        sel.Select(ctx)
+
+        if !approved {
+            return temporal.NewNonRetryableApplicationError("fraud check aborted by operator", "FraudCheckAborted", nil)
+        }
+        // Retry once after approval.
+        if err := workflow.ExecuteActivity(ctx, FraudCheckActivity, order).Get(ctx, nil); err != nil {
+            return fmt.Errorf("fraud check after approval: %w", err)
+        }
+    }
+    return nil
+}
+```
+
+#### Polling with Delay
+
+Use when an external resource transitions through states asynchronously and the workflow must wait until a condition is met (e.g. a batch job completes, a record becomes consistent). Poll inside the workflow using `workflow.Sleep` so Temporal's deterministic clock is respected and the wait is durable across worker restarts.
+
+```go
+// Use case: wait for an async export job to finish before proceeding.
+func ExportWorkflow(ctx workflow.Context, jobID string) error {
+    ao := workflow.ActivityOptions{
+        StartToCloseTimeout: 10 * time.Second,
+        RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 3},
+    }
+    ctx = workflow.WithActivityOptions(ctx, ao)
+
+    const (
+        _maxPolls    = 20
+        _pollInterval = 15 * time.Second
+    )
+    for i := 0; i < _maxPolls; i++ {
+        var done bool
+        if err := workflow.ExecuteActivity(ctx, CheckExportStatusActivity, jobID).Get(ctx, &done); err != nil {
+            return fmt.Errorf("check export status: %w", err)
+        }
+        if done {
+            return nil
+        }
+        // Sleep deterministically — never use time.Sleep inside a workflow.
+        if err := workflow.Sleep(ctx, _pollInterval); err != nil {
+            return err // workflow was cancelled
+        }
+    }
+    return temporal.NewNonRetryableApplicationError("export job timed out", "ExportTimeout", nil)
+}
+```
+
+#### Custom Retry Logic in Activity
+
+Use when the built-in retry policy applies the same back-off to every error, but different error types need different treatment — for example, throttling errors should back off longer while transient network errors should retry immediately. Implement a manual retry loop inside the Activity and classify errors explicitly.
+
+```go
+// Use case: calling a third-party API that returns both throttle errors (need longer back-off)
+// and transient errors (can retry quickly).
+func CallExternalAPIActivity(ctx context.Context, req Request) (*Response, error) {
+    const _maxAttempts = 5
+    backoff := time.Second
+
+    for attempt := 1; attempt <= _maxAttempts; attempt++ {
+        resp, err := externalClient.Call(ctx, req)
+        if err == nil {
+            return resp, nil
+        }
+
+        var throttleErr *ThrottleError
+        var networkErr *NetworkError
+        switch {
+        case errors.As(err, &throttleErr):
+            // Throttle errors require a longer wait; honour the Retry-After hint if available.
+            wait := throttleErr.RetryAfter
+            if wait == 0 {
+                wait = 30 * time.Second
+            }
+            activity.RecordHeartbeat(ctx, fmt.Sprintf("throttled, waiting %s", wait))
+            select {
+            case <-ctx.Done():
+                return nil, ctx.Err()
+            case <-time.After(wait):
+            }
+        case errors.As(err, &networkErr):
+            // Network errors retry quickly with exponential back-off.
+            activity.RecordHeartbeat(ctx, fmt.Sprintf("network error attempt %d", attempt))
+            select {
+            case <-ctx.Done():
+                return nil, ctx.Err()
+            case <-time.After(backoff):
+            }
+            backoff *= 2
+            if backoff > 30*time.Second {
+                backoff = 30 * time.Second
+            }
+        default:
+            // Unknown error — non-retryable.
+            return nil, temporal.NewNonRetryableApplicationError(
+                "unexpected API error",
+                "UnexpectedAPIError",
+                err,
+            )
+        }
+    }
+    return nil, fmt.Errorf("external API call failed after %d attempts", _maxAttempts)
+}
+```
+
+> **Note:** Disable Temporal's built-in retry when using a manual loop (`MaximumAttempts: 1`) to avoid double-retrying on the same error.
+
+### ContinueAsNew
+
+Use `workflow.NewContinueAsNewError` to restart a workflow with fresh history when it processes unbounded event streams or long-running loops. This prevents history size from growing indefinitely.
+
+```go
+const _maxIterations = 1000
+
+func PollingWorkflow(ctx workflow.Context, state State) error {
+    for i := 0; i < _maxIterations; i++ {
+        // ... process one iteration ...
+    }
+    // Hand off to a new run with updated state
+    return workflow.NewContinueAsNewError(ctx, PollingWorkflow, state)
+}
+```
+
+### Testing
+
+Use `testsuite.WorkflowTestSuite` for unit-testing workflows and activities in a deterministic, in-process environment. Do not call a real Temporal server in unit tests.
+
+- Mock Activities with `env.OnActivity(...)` to control return values and assert call counts.
+- Use `env.RegisterDelayedCallback` to simulate signals and timers.
+- Test Activities independently with plain Go unit tests — they are ordinary functions.
+
+```go
+func TestOrderWorkflow_Success(t *testing.T) {
+    suite.Run(t, new(OrderWorkflowTestSuite))
+}
+
+type OrderWorkflowTestSuite struct {
+    suite.Suite
+    testsuite.WorkflowTestSuite
+}
+
+func (s *OrderWorkflowTestSuite) Test_ProcessOrder() {
+    env := s.NewTestWorkflowEnvironment()
+    env.OnActivity(ProcessOrderActivity, mock.Anything, "order-123").Return(nil)
+    env.OnActivity(NotifyCustomerActivity, mock.Anything, "order-123").Return(nil)
+
+    env.ExecuteWorkflow(OrderWorkflow, Order{ID: "order-123"})
+
+    s.True(env.IsWorkflowCompleted())
+    s.NoError(env.GetWorkflowError())
+    env.AssertExpectations(s.T())
+}
+```
+
+### Naming Conventions
+
+| Artifact | Convention | Example |
+|---|---|---|
+| Workflow function | `MixedCaps` + `Workflow` suffix | `OrderWorkflow` |
+| Activity function | `MixedCaps` + `Activity` suffix | `ProcessOrderActivity` |
+| Task queue name | kebab-case string constant | `"order-processing"` |
+| Signal / query / update name | kebab-case string constant | `"cancel-order"` |
+| Workflow ID | Unique, human-readable, business-scoped | `"order-" + orderID` |
+
+### Code Quality Checklist — Temporal
+
+Before requesting a review on Temporal-related changes, verify:
+
+- [ ] Workflow functions contain no non-deterministic code (no `time.Now`, no I/O, no raw goroutines).
+- [ ] Every Activity is idempotent and accepts `context.Context` as the first parameter.
+- [ ] Long-running Activities call `activity.RecordHeartbeat` with a `HeartbeatTimeout` set.
+- [ ] `StartToCloseTimeout` is set on every `ActivityOptions` block and is greater than the upstream service timeout.
+- [ ] `ScheduleToCloseTimeout` covers the worst-case cumulative retry duration (validated with the retry simulator).
+- [ ] `MaximumAttempts` is explicitly set; unlimited retries (`0`) are avoided for critical external calls.
+- [ ] Non-idempotent Activities use `MaximumAttempts: 1` with alerting, or an exactly-once deduplication strategy.
+- [ ] Non-retryable errors use `temporal.NewNonRetryableApplicationError`.
+- [ ] Workflow logic changes use `workflow.GetVersion` to protect in-flight executions.
+- [ ] Workflows that process unbounded events use `workflow.NewContinueAsNewError`.
+- [ ] Worker registration happens in the composition root, not inside domain packages.
+- [ ] Workflow and Activity unit tests use `testsuite.WorkflowTestSuite` and mock all Activities.
+## Redis & Go Best Practices
+
+> Use [github.com/redis/go-redis/v9](https://github.com/redis/go-redis) as the standard client.
+> All rules below apply to every Redis interaction in this repository.
+
+### Client Setup & Connection Pooling
+
+- Instantiate **one** `redis.Client` (or `redis.ClusterClient`) per application and share it via dependency injection — never create a new client per request.
+- Configure the pool explicitly; do not rely on defaults for production workloads:
+  ```go
+  rdb := redis.NewClient(&redis.Options{
+    Addr:         cfg.RedisAddr,
+    PoolSize:     10,              // total max connections in pool
+    MinIdleConns: 2,
+    DialTimeout:  5 * time.Second,
+    ReadTimeout:  3 * time.Second,
+    WriteTimeout: 3 * time.Second,
+  })
+  ```
+- Call `rdb.Close()` in the application shutdown path (e.g. inside `run()` via `defer`).
+- Verify connectivity at startup with `rdb.Ping(ctx)` and fail fast if Redis is unreachable.
+
+### Interface / Port Pattern
+
+- Never import `*redis.Client` directly into domain packages. Define a narrow port interface and inject it:
+  ```go
+  // port — lives in the domain or shared/ports package
+  type Cache interface {
+    Get(ctx context.Context, key string) (string, error)
+    Set(ctx context.Context, key string, value any, ttl time.Duration) error
+    Del(ctx context.Context, keys ...string) error
+  }
+  ```
+- The concrete adapter (wrapping `*redis.Client`) belongs in the integrations layer.
+- This pattern keeps domain tests free of Redis and lets you swap implementations (e.g. `miniredis` in tests).
+
+### Key Naming Conventions
+
+- Keys must be **short, descriptive, and use alphanumeric characters only** — no special characters other than `:` and `_`.
+- Use **colon `:` as the namespace/hierarchy separator** and **underscore `_` to separate words** within a segment.
+- Use a **hierarchical structure** that includes environment, namespace/module, entity, and ID to avoid cross-service or cross-environment collisions:
+  ```
+  <env>:<namespace>:<entity>:<id>[:<qualifier>]
+
+  staging:dop:dj_api:app:123
+  prod:auth:session:u_456
+  dev:rate_limit:ip:192_0_2_1
+  ```
+- Define key templates as typed constants or constructor functions — never build keys with ad-hoc `fmt.Sprintf` calls scattered across handlers:
+  ```go
+  func sessionKey(env, userID string) string {
+    return fmt.Sprintf("%s:auth:session:u_%s", env, userID)
+  }
+  ```
+- Avoid overly broad keys (e.g. `cache:*`) that make scanning and eviction unpredictable.
+
+### Context Propagation
+
+- Pass `context.Context` as the **first argument** to every Redis call. Never use `context.Background()` inside a handler — propagate the request context so timeouts and cancellations are respected:
+  ```go
+  val, err := rdb.Get(ctx, key).Result()
+  ```
+
+### Data Types
+
+Choose the most memory-efficient Redis data type for the task; avoid storing everything as a plain `String`:
+
+| Use case | Recommended type |
+|---|---|
+| Single scalar value / token | `String` |
+| Structured object with named fields | `Hash` |
+| Ordered collection, leaderboard | `Sorted Set (ZSet)` |
+| Unique membership test | `Set` |
+| Queue / stack | `List` |
+| Approximate counting / membership | `HyperLogLog` / `Bloom filter` |
+
+- Prefer `Hash` over multiple `String` keys for the same object — it reduces key-count overhead and allows partial field updates with `HSET`.
+- Never store large blobs (> a few KB) without measuring the impact on memory and serialization time.
+
+### Error Handling
+
+- Distinguish `redis.Nil` (key not found — an expected condition) from real errors:
+  ```go
+  val, err := rdb.Get(ctx, key).Result()
+  if errors.Is(err, redis.Nil) {
+    // cache miss — handle gracefully
+    return "", ErrNotFound
+  }
+  if err != nil {
+    return "", fmt.Errorf("cache get %q: %w", key, err)
+  }
+  ```
+- Never silently discard Redis errors; log or propagate them with context.
+- Wrap errors at the adapter boundary using `%w` so callers can use `errors.Is`/`errors.As`.
+
+### TTL / Expiration Discipline
+
+- **Every** key written to Redis must have an explicit TTL. Omitting a TTL risks unbounded memory growth:
+  ```go
+  rdb.Set(ctx, key, value, 24*time.Hour)
+  ```
+- Define TTL values as named constants or configuration, not magic numbers.
+- Use `EXPIREAT` / `ExpireAt` when the expiry must align with a wall-clock boundary (e.g. end of day).
+- Never rely on Redis eviction policies as a substitute for intentional TTLs.
+
+### Cache Invalidation
+
+Choose an invalidation strategy explicitly; do not leave it up to TTL alone:
+
+- **TTL-based expiration** (passive): set an appropriate TTL on every write and let Redis expire the key automatically. Use for read-heavy data that tolerates brief staleness.
+- **Active invalidation on write**: delete or update the cache key immediately after the source-of-truth record changes. Keeps the cache consistent but couples write paths to the cache layer.
+- **Event-driven invalidation**: consume a change-data-capture or domain event stream to invalidate keys asynchronously. Decouples the write path but introduces eventual consistency.
+- **Cache-aside (lazy loading)**: read from the source on a miss and populate the cache. Combine with a short TTL to bound staleness.
+- Document the chosen strategy in a comment near the adapter so future readers understand the consistency trade-off.
+
+### Pipelining & Batching
+
+- Use pipelining when issuing **3 or more** independent commands to reduce round-trip overhead:
+  ```go
+  pipe := rdb.Pipeline()
+  pipe.Set(ctx, "key1", "v1", ttl)
+  pipe.Set(ctx, "key2", "v2", ttl)
+  _, err := pipe.Exec(ctx)
+  ```
+- Prefer `MGet` / `MSet` over N sequential `Get` / `Set` calls.
+- Keep pipeline batches bounded; limit individual batches to a configurable maximum (e.g. 100–500 commands) and flush in chunks to avoid blocking the event loop.
+
+### Transactions (MULTI/EXEC) and Optimistic Locking
+
+- Use `TxPipelined` for atomic multi-key writes that do not require read-your-write consistency:
+  ```go
+  _, err := rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+    pipe.Set(ctx, "a", 1, ttl)
+    pipe.Set(ctx, "b", 2, ttl)
+    return nil
+  })
+  ```
+- Use `Watch` + `TxPipelined` for optimistic locking (check-and-set patterns); always handle `redis.TxFailedErr` by retrying or returning a conflict error to the caller.
+- For complex atomic logic, prefer a **Lua script** loaded with `ScriptLoad` / `EvalSha` over multiple round-trips.
+
+### Lua Scripting
+
+- Keep Lua scripts short and single-purpose; store them as `const` strings or embed them from `.lua` files via `//go:embed`.
+- Load scripts once at startup using `ScriptLoad` and call them by SHA with `EvalSha`; fall back to `Eval` only when the script may not be loaded yet.
+- Document the expected `KEYS` and `ARGV` arguments with a comment above each script.
+
+### Pub/Sub
+
+- Always run `Subscribe`/`PSubscribe` on a **dedicated connection** (not the shared pool client). Use `rdb.Subscribe(ctx, channels...)` which returns a `*redis.PubSub`.
+- Read messages in a separate goroutine; respect context cancellation:
+  ```go
+  sub := rdb.Subscribe(ctx, "events")
+  defer sub.Close()
+  ch := sub.Channel()
+  for {
+    select {
+    case msg, ok := <-ch:
+      if !ok {
+        return
+      }
+      handle(msg.Payload)
+    case <-ctx.Done():
+      return
+    }
+  }
+  ```
+- Unsubscribe and close `PubSub` in the goroutine's cleanup path to avoid connection leaks.
+
+### Testing
+
+- Use [github.com/alicebob/miniredis/v2](https://github.com/alicebob/miniredis) for unit and integration tests — never connect to a real Redis instance in automated tests:
+  ```go
+  func TestCache(t *testing.T) {
+    mr := miniredis.RunT(t)
+    rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+    // exercise the adapter under test
+  }
+  ```
+- Advance `miniredis` time with `mr.FastForward(d)` to test TTL expiration without real sleeps.
+- Test `redis.Nil` paths explicitly; do not assume a cache miss is always correct behaviour.
+
+### Observability
+
+- Instrument Redis operations with a hook (`rdb.AddHook(...)`) to emit latency metrics and trace spans — do not add ad-hoc timing code around individual calls.
+- Log slow commands (> configured threshold) at `WARN` level with the key name (but never the value if it may contain PII).
+- Include the Redis command name and key pattern (not full key) in error context strings.
+
+### Memory Management
+
+- **Always estimate memory before deploying** a new key space. A simple model:
+  ```
+  total memory ≈ (key_size + value_size + SDS_overhead + per-key_metadata) × key_count
+  ```
+  Where `SDS_overhead` is ~45 bytes per key (Redis 7.x) for Redis's Simple Dynamic String header plus `dictEntry` and pointer alignment — verify against your specific Redis version using `MEMORY USAGE <key>`. Use `redis-cli --bigkeys` and `MEMORY USAGE <key>` to validate estimates against a real data sample.
+- Avoid keys longer than 64 bytes — long key names inflate the key-space memory with no benefit. Prefer compact prefixes and document the abbreviations.
+- Use `OBJECT ENCODING <key>` to confirm Redis chose the most compact internal encoding (e.g. `listpack` for small hashes/lists vs `hashtable`/`quicklist`). Tune `hash-max-listpack-entries` and related config thresholds to keep small objects in compact form.
+- Set a `maxmemory` limit and an appropriate `maxmemory-policy` (e.g. `allkeys-lru` or `volatile-lru`) in every environment. Monitor the `used_memory_rss` vs `used_memory` ratio; a high ratio indicates memory fragmentation.
+- **Close the client** when the application shuts down — call `rdb.Close()` to return pooled connections and prevent goroutine/file-descriptor leaks:
+  ```go
+  func run(cfg Config) error {
+    rdb := newRedisClient(cfg)
+    defer rdb.Close()
+    // ...
+  }
+  ```
