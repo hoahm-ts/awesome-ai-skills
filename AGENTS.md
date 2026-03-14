@@ -2358,6 +2358,115 @@ Guidelines:
   ```
 - Provide secrets at runtime via environment variables or a secrets manager (Vault, AWS Secrets Manager, GCP Secret Manager) — never via `ENV` instructions in the Dockerfile.
 
+### Environment Variable Naming Conventions
+
+Environment variables are the primary runtime configuration mechanism for containerized services. Follow these conventions for all `ENV` declarations in Dockerfiles, Docker Compose files, and Kubernetes manifests.
+
+#### General rules
+
+- Use **UPPER_SNAKE_CASE** for all variable names.
+- Group related variables by a consistent service or domain prefix (e.g. `DB_`, `REDIS_`, `KAFKA_`, `HTTP_`).
+- Prefer explicit, descriptive names over terse abbreviations.
+
+```dockerfile
+# Good — grouped by domain, uppercase, underscore-separated
+ENV DB_HOST=localhost \
+    DB_PORT=5432 \
+    DB_NAME=mydb \
+    HTTP_PORT=8080 \
+    HTTP_READ_TIMEOUT_DURATION=30s
+
+# Bad — no grouping, mixed case, ambiguous names
+ENV dbhost=localhost port=8080 t=30
+```
+
+#### Boolean variables
+
+- Prefix with `IS_` for state: `IS_ACTIVE`, `IS_VERIFIED`.
+- Prefix with `HAS_` for capability: `HAS_FEATURE_X`, `HAS_PREMIUM_ACCESS`.
+- Prefix with `ENABLE_` for feature flags: `ENABLE_DARK_MODE`, `ENABLE_RATE_LIMITING`.
+- **Never** use negatives (`DISABLE_`, `INACTIVE_`, `NO_`) — they force double negation in code (`if !disableFeature`).
+
+```dockerfile
+# Good
+ENV ENABLE_METRICS=true \
+    ENABLE_TRACING=false \
+    IS_READ_ONLY=false \
+    HAS_LEGACY_SUPPORT=false
+
+# Bad
+ENV DISABLE_METRICS=false \
+    INACTIVE_TRACING=true
+```
+
+#### Time / duration variables
+
+Use the `_DURATION` suffix for values that are parsed as `time.Duration` (Go-style strings such as `30s`, `5m`, `1h`). When the unit is fixed and the value is a plain integer, encode the unit in the suffix:
+
+| Suffix | Example | Parsed as |
+|---|---|---|
+| `_DURATION` | `HTTP_READ_TIMEOUT_DURATION=30s` | `time.Duration` |
+| `_DURATION_SECONDS` | `SESSION_TTL_DURATION_SECONDS=3600` | `int` seconds |
+| `_DURATION_MINUTES` | `CACHE_TTL_DURATION_MINUTES=10` | `int` minutes |
+| `_DURATION_HOURS` | `TOKEN_EXPIRY_DURATION_HOURS=24` | `int` hours |
+
+```dockerfile
+ENV HTTP_READ_TIMEOUT_DURATION=30s \
+    HTTP_WRITE_TIMEOUT_DURATION=30s \
+    SESSION_TTL_DURATION_SECONDS=3600 \
+    CACHE_TTL_DURATION_MINUTES=10
+```
+
+#### Numeric variables
+
+Use a descriptive unit suffix to avoid ambiguity:
+
+| Suffix | Example |
+|---|---|
+| `_AMOUNT` | `MAX_RETRY_AMOUNT=3` |
+| `_LIMIT` | `DB_CONNECTION_LIMIT=25` |
+| `_COUNT` | `WORKER_COUNT=4` |
+| `_RATE` | `PUBLISH_RATE=100` |
+| `_LEVEL` | `LOG_LEVEL=1` |
+| `_PERCENTAGE` | `CACHE_EVICTION_PERCENTAGE=20` |
+
+```dockerfile
+ENV DB_CONNECTION_LIMIT=25 \
+    DB_IDLE_CONNECTION_LIMIT=5 \
+    WORKER_COUNT=4 \
+    MAX_RETRY_AMOUNT=3 \
+    RATE_LIMIT_RATE=1000 \
+    RATE_LIMIT_BURST_LIMIT=100
+```
+
+#### Complete example
+
+```dockerfile
+ENV \
+    # Server
+    HTTP_HOST=0.0.0.0 \
+    HTTP_PORT=8080 \
+    HTTP_READ_TIMEOUT_DURATION=30s \
+    HTTP_WRITE_TIMEOUT_DURATION=30s \
+    # Database
+    DB_HOST=localhost \
+    DB_PORT=5432 \
+    DB_NAME=mydb \
+    DB_CONNECTION_LIMIT=25 \
+    DB_IDLE_CONNECTION_LIMIT=5 \
+    DB_CONNECTION_MAX_LIFETIME_DURATION_MINUTES=5 \
+    # Feature flags
+    ENABLE_METRICS=true \
+    ENABLE_TRACING=true \
+    ENABLE_RATE_LIMITING=false \
+    # Rate limiting
+    RATE_LIMIT_RATE=1000 \
+    RATE_LIMIT_BURST_LIMIT=100 \
+    # Workers
+    WORKER_COUNT=4 \
+    MAX_RETRY_AMOUNT=3
+```
+
 ### `.dockerignore`
 
 Always include a `.dockerignore` file to exclude files and directories that must not be sent to the build context. This speeds up builds and prevents leaking sensitive files into the image:
