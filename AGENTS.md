@@ -404,6 +404,38 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
 > These guidelines apply to all Go services that produce or consume Kafka messages.
 > Follow them alongside the Go Style Guidelines above.
 
+### Topic Naming Conventions
+
+- Use a dot-separated, lowercase hierarchy that encodes ownership and intent:
+  ```
+  <domain>.<entity>.<event>
+  ```
+  Examples: `payments.order.created`, `inventory.product.updated`, `auth.user.deleted`.
+- Use only lowercase letters, digits, hyphens (`-`), and dots (`.`). Never use underscores within a segment or uppercase — some tooling treats `.` and `_` differently, and mixed case causes confusion across teams. The sole exception is a leading `_` on internal topics (see below).
+- Keep each segment short and singular: `order` not `orders`, `product` not `products`. The domain segment may be plural when the service name is conventionally plural (e.g. `payments`).
+- Dead-letter topics mirror their source topic with a `.dlt` suffix:
+  ```
+  payments.order.created.dlt
+  ```
+- Retry topics (when using staged retries) append `.retry.<n>`:
+  ```
+  payments.order.created.retry.1
+  payments.order.created.retry.2
+  ```
+- Internal or compacted state topics (e.g. changelog topics for Kafka Streams) use a `_` prefix to signal they are infrastructure-level and not consumed directly by application code:
+  ```
+  _payments.order.state
+  ```
+- Declare topic names as typed constants in a shared `ports` or `topics` package; never hard-code raw strings across services:
+  ```go
+  // ports/topics.go
+  const (
+    TopicOrderCreated    = "payments.order.created"
+    TopicOrderCreatedDLT = "payments.order.created.dlt"
+  )
+  ```
+- Document each topic in the codebase with an inline comment: the event schema it carries, the producing service, and the expected consumers.
+
 ### Client Library
 
 - Pick one library and use it consistently across all services: [franz-go](https://github.com/twmb/franz-go) (recommended for its idiomatic Go API and first-class context support) or [confluent-kafka-go](https://github.com/confluentinc/confluent-kafka-go).
