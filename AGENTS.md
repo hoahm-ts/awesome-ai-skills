@@ -437,16 +437,20 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
 
 ### Key Naming Conventions
 
-- Use a structured, colon-separated hierarchy: `<service>:<entity>:<id>[:<qualifier>]`.
+- Keys must be **short, descriptive, and use alphanumeric characters only** — no special characters other than `:` and `_`.
+- Use **colon `:` as the namespace/hierarchy separator** and **underscore `_` to separate words** within a segment.
+- Use a **hierarchical structure** that includes environment, namespace/module, entity, and ID to avoid cross-service or cross-environment collisions:
   ```
-  auth:session:u123
-  product:detail:p456
-  rate-limit:ip:192.0.2.1
+  <env>:<namespace>:<entity>:<id>[:<qualifier>]
+
+  staging:dop:dj_api:app:123
+  prod:auth:session:u_456
+  dev:rate_limit:ip:192_0_2_1
   ```
 - Define key templates as typed constants or constructor functions — never build keys with ad-hoc `fmt.Sprintf` calls scattered across handlers:
   ```go
-  func sessionKey(userID string) string {
-    return "auth:session:" + userID
+  func sessionKey(env, userID string) string {
+    return fmt.Sprintf("%s:auth:session:u_%s", env, userID)
   }
   ```
 - Avoid overly broad keys (e.g. `cache:*`) that make scanning and eviction unpredictable.
@@ -457,6 +461,22 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
   ```go
   val, err := rdb.Get(ctx, key).Result()
   ```
+
+### Data Types
+
+Choose the most memory-efficient Redis data type for the task; avoid storing everything as a plain `String`:
+
+| Use case | Recommended type |
+|---|---|
+| Single scalar value / token | `String` |
+| Structured object with named fields | `Hash` |
+| Ordered collection, leaderboard | `Sorted Set (ZSet)` |
+| Unique membership test | `Set` |
+| Queue / stack | `List` |
+| Approximate counting / membership | `HyperLogLog` / `Bloom filter` |
+
+- Prefer `Hash` over multiple `String` keys for the same object — it reduces key-count overhead and allows partial field updates with `HSET`.
+- Never store large blobs (> a few KB) without measuring the impact on memory and serialization time.
 
 ### Error Handling
 
@@ -483,6 +503,16 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
 - Define TTL values as named constants or configuration, not magic numbers.
 - Use `EXPIREAT` / `ExpireAt` when the expiry must align with a wall-clock boundary (e.g. end of day).
 - Never rely on Redis eviction policies as a substitute for intentional TTLs.
+
+### Cache Invalidation
+
+Choose an invalidation strategy explicitly; do not leave it up to TTL alone:
+
+- **TTL-based expiration** (passive): set an appropriate TTL on every write and let Redis expire the key automatically. Use for read-heavy data that tolerates brief staleness.
+- **Active invalidation on write**: delete or update the cache key immediately after the source-of-truth record changes. Keeps the cache consistent but couples write paths to the cache layer.
+- **Event-driven invalidation**: consume a change-data-capture or domain event stream to invalidate keys asynchronously. Decouples the write path but introduces eventual consistency.
+- **Cache-aside (lazy loading)**: read from the source on a miss and populate the cache. Combine with a short TTL to bound staleness.
+- Document the chosen strategy in a comment near the adapter so future readers understand the consistency trade-off.
 
 ### Pipelining & Batching
 
@@ -555,3 +585,22 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
 - Instrument Redis operations with a hook (`rdb.AddHook(...)`) to emit latency metrics and trace spans — do not add ad-hoc timing code around individual calls.
 - Log slow commands (> configured threshold) at `WARN` level with the key name (but never the value if it may contain PII).
 - Include the Redis command name and key pattern (not full key) in error context strings.
+
+### Memory Management
+
+- **Always estimate memory before deploying** a new key space. A simple model:
+  ```
+  total memory ≈ (key_size + value_size + SDS_overhead + per-key_metadata) × key_count
+  ```
+  Where `SDS_overhead` is ~45 bytes per key (Redis 7.x) for Redis's Simple Dynamic String header plus `dictEntry` and pointer alignment — verify against your specific Redis version using `MEMORY USAGE <key>`. Use `redis-cli --bigkeys` and `MEMORY USAGE <key>` to validate estimates against a real data sample.
+- Avoid keys longer than 64 bytes — long key names inflate the key-space memory with no benefit. Prefer compact prefixes and document the abbreviations.
+- Use `OBJECT ENCODING <key>` to confirm Redis chose the most compact internal encoding (e.g. `listpack` for small hashes/lists vs `hashtable`/`quicklist`). Tune `hash-max-listpack-entries` and related config thresholds to keep small objects in compact form.
+- Set a `maxmemory` limit and an appropriate `maxmemory-policy` (e.g. `allkeys-lru` or `volatile-lru`) in every environment. Monitor the `used_memory_rss` vs `used_memory` ratio; a high ratio indicates memory fragmentation.
+- **Close the client** when the application shuts down — call `rdb.Close()` to return pooled connections and prevent goroutine/file-descriptor leaks:
+  ```go
+  func run(cfg Config) error {
+    rdb := newRedisClient(cfg)
+    defer rdb.Close()
+    // ...
+  }
+  ```
