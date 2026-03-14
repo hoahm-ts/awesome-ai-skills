@@ -1,3 +1,7 @@
+# Default application configuration.
+# This file serves as both the static default config (used when running locally without Docker)
+# and the reference for every setting.  The corresponding env var for each value is shown in
+# etc/config/template.yml, which dockerize renders into app_config.yml at container startup.
 app:
   name: awesome-ai-skills
   env: development
