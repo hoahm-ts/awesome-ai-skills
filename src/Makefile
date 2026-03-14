@@ -45,9 +45,7 @@ test-cover:
 
 # Run tests using the CI docker-compose stack (PostgreSQL + Redis via tmpfs)
 test-ci:
-	docker compose -f docker/docker-compose.test.yml up -d
-	go vet ./...
-	go test ./...
+	docker compose -f docker/docker-compose.test.yml run --rm test
 	docker compose -f docker/docker-compose.test.yml down -v
 
 # ── Code Generation ──────────────────────────────────────────────────────────────
