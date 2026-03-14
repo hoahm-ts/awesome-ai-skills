@@ -1,0 +1,53 @@
+openapi: "3.1.0"
+info:
+  title: Awesome AI Skills API
+  version: "0.1.0"
+  description: >
+    REST API for awesome-ai-skills.
+    Add endpoint definitions here following the OpenAPI 3.1 specification.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /ping:
+    get:
+      summary: Liveness check
+      operationId: ping
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PingResponse"
+
+components:
+  schemas:
+    Envelope:
+      type: object
+      required: [data, message, time, verdict]
+      properties:
+        data:
+          description: Response payload; empty object for error responses.
+        message:
+          type: string
+          description: Human-readable description; empty string for success responses.
+        time:
+          type: string
+          format: date-time
+          description: Response timestamp in RFC 3339 format.
+        verdict:
+          type: string
+          enum: [success, error]
+          description: Machine-readable outcome code.
+
+    PingResponse:
+      allOf:
+        - $ref: "#/components/schemas/Envelope"
+      example:
+        data: {}
+        message: pong
+        time: "2026-03-14T17:02:59+07:00"
+        verdict: success

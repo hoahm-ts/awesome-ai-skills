@@ -21,27 +21,58 @@ repo root/
 ├── CODEX.md                         # Codex/ChatGPT-specific coding instructions
 ├── JUNIE.md                         # Junie (JetBrains AI) specific instructions
 ├── .cursorrules                     # Cursor AI editor rules
-├── docs/
-│   └── architectures/
-│       └── architecture.md          # High-level system architecture overview
+├── docs/                            # Architecture and design documentation
+│   ├── architecture.md              # High-level system architecture overview
 │   └── repository-initialisation.md # Step-by-step guide to initialise a new repository
+├── openspec/                        # Spec-driven workflow artifacts
+│   └── config.yaml
 ├── .claude/
 │   ├── settings.json                # Claude project settings
 │   ├── hooks/                       # Claude lifecycle hooks
 │   ├── commands/                    # Claude custom slash commands
 │   └── skills/                      # Claude reusable skills
-└── .github/
-    ├── copilot-instructions.md      # GitHub Copilot instructions
-    ├── init-labels.sh               # Script to create standard GitHub issue labels
-    ├── init-repo-settings.sh        # Script to apply standard repository settings
-    ├── labeler.yml                  # Label-to-file-pattern mappings for the labeler workflow
-    ├── rulesets/
-    │   ├── protect-main.json        # Ruleset: protect the default branch
-    │   └── general-rule.json        # Ruleset: general rules for all branches
-    ├── release.yaml                 # Release drafter configuration
-    ├── PULL_REQUEST_TEMPLATE.md     # Default pull request template
-    └── workflows/
-        └── labeler.yml              # GitHub Actions workflow to auto-label pull requests
+├── .github/
+│   ├── copilot-instructions.md      # GitHub Copilot instructions
+│   ├── init-labels.sh               # Script to create standard GitHub issue labels
+│   ├── init-repo-settings.sh        # Script to apply standard repository settings
+│   ├── labeler.yml                  # Label-to-file-pattern mappings for the labeler workflow
+│   ├── rulesets/
+│   │   ├── protect-main.json        # Ruleset: protect the default branch
+│   │   └── general-rule.json        # Ruleset: general rules for all branches
+│   ├── release.yaml                 # Release drafter configuration
+│   ├── PULL_REQUEST_TEMPLATE.md     # Default pull request template
+│   └── workflows/
+│       └── labeler.yml              # GitHub Actions workflow to auto-label pull requests
+└── src/                             # Go module root
+    ├── go.mod
+    ├── go.sum
+    ├── Makefile
+    ├── .golangci.yml                # golangci-lint configuration
+    ├── api/                         # OpenAPI specs + codegen config/inputs
+    │   └── openapi.yaml
+    ├── cmd/                         # Application binaries
+    │   ├── api/                     # HTTP API server
+    │   ├── worker/                  # Temporal background worker
+    │   └── migration/               # Database migration runner
+    ├── internal/                    # Application core (not importable outside this module)
+    │   ├── handler/                 # HTTP route handlers (delivery layer)
+    │   ├── integration/             # External service adapters (infra layer)
+    │   ├── lifecycle/               # Startup and graceful shutdown
+    │   ├── timeline/                # Temporal workflow and activity definitions
+    │   ├── event/                   # Kafka event publishers and consumers
+    │   ├── shared/                  # Shared kernel: types, sentinel errors, pagination
+    │   └── wire/                    # Single composition root — all DI wiring lives here
+    ├── pkg/                         # Reusable helper libraries (no business logic)
+    │   ├── config/                  # Application configuration loading
+    │   ├── logger/                  # zerolog setup and context helpers
+    │   ├── middleware/              # HTTP middleware
+    │   ├── response/                # Standard JSON HTTP response helpers
+    │   ├── utils/                   # Small general-purpose helpers
+    │   └── security/                # Password hashing and verification
+    ├── migrations/                  # SQL migration files (golang-migrate)
+    ├── docker/                      # Dockerfile(s)
+    ├── etc/config/                  # Environment-specific config files
+    └── scripts/                     # Build and operational scripts
 ```
 
 ## Overview

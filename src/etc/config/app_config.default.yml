@@ -1,0 +1,43 @@
+# Default application configuration.
+# This file serves as both the static default config (used when running locally without Docker)
+# and the reference for every setting.  The corresponding env var for each value is shown in
+# etc/config/template.yml, which dockerize renders into app_config.yml at container startup.
+app:
+  name: awesome-ai-skills
+  env: development
+  port: 8080
+  log_level: info
+  read_timeout_seconds: 15
+  write_timeout_seconds: 15
+  idle_timeout_seconds: 60
+  shutdown_timeout_seconds: 30
+
+database:
+  dsn: ""
+  host: localhost
+  port: 5432
+  name: ""
+  user: ""
+  password: ""
+  ssl_mode: disable
+  ssl_cert: ""
+  ssl_key: ""
+  ssl_root_cert: ""
+
+redis:
+  addr: localhost:6379
+  password: ""
+
+kafka:
+  broker: localhost:9092
+  group_id: awesome-ai-skills
+
+temporal:
+  host_port: localhost:7233
+  namespace: default
+  task_queue: default
+
+datadog:
+  service: awesome-ai-skills
+  env: development
+  agent_host: localhost
