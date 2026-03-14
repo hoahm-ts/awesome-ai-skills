@@ -11,6 +11,7 @@ A curated collection of configuration files, instructions, and best practices fo
 - [Overview](#overview)
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
+- [Using Claude Code Skills](#using-claude-code-skills)
 - [Repository Initialisation](docs/repository-initialisation.md)
 - [Contributing](#contributing)
 - [License](#license)
@@ -112,6 +113,72 @@ This repository provides a unified set of instructions and configuration files f
 1. Clone this repository as a reference or template.
 2. Copy the relevant configuration files into your own project.
 3. Customise the instructions to match your project's conventions, tech stack, and coding standards.
+
+## Using Claude Code Skills
+
+Claude Code skills live in `.claude/skills/`. Each skill is a self-contained Markdown file that gives Claude a reusable, well-defined behaviour — like a saved workflow you can invoke by name.
+
+### Available skills
+
+| Skill | Slash command | Description |
+|-------|---------------|-------------|
+| `project-status-summary` | `/project-status-summary` | Aggregate project health signals from Slack, Jira, Confluence, and email into a structured executive summary, then post it to Slack |
+| `openspec-explore` | `/opsx:explore` | Enter explore mode — a thinking partner for ideas, problems, and requirements |
+| `openspec-propose` | `/opsx:propose` | Propose a new change and generate all artifacts (proposal, design, tasks) in one step |
+| `openspec-apply-change` | `/opsx:apply` | Implement tasks from an existing OpenSpec change |
+| `openspec-archive-change` | `/opsx:archive` | Archive a completed change |
+
+### How to use the `project-status-summary` skill
+
+**Option A — natural language**
+
+Ask Claude in plain English:
+
+```
+Please summarize the current project status for the project: "tpbank", on the CO board.
+```
+
+To look back further than the default 7 days:
+
+```
+Please summarize the project "tpbank" on the CO board for the last 14 days.
+```
+
+**Option B — slash command**
+
+```
+/project-status-summary tpbank CO                     # last 7 days, send to your DM
+/project-status-summary tpbank CO 14                  # last 14 days
+/project-status-summary tpbank CO 7 #tpbank-updates   # post to a channel
+/project-status-summary tpbank CO 7 @john             # DM to @john
+/project-status-summary "my project" CO               # multi-word project name
+```
+
+**Parameters**
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `project` | ✅ | — | Project name (use quotes for multi-word names) |
+| `board` | ✅ | — | Jira board key (e.g., `CO`) |
+| `days` | ❌ | `7` | Number of days to look back |
+| `channel` | ❌ | user's own DM | Slack destination — a channel (`#name`) or DM handle (`@name`) |
+
+**What it does**
+
+1. Searches Slack (channels and messages), Jira (board tickets and sprint data), Confluence (updated pages), and email for activity matching the project name within the specified time window.
+2. Produces a structured executive summary with numbered source references on every bullet.
+3. Lists all sources in a table with direct links (Slack message permalinks, Jira ticket URLs, Confluence page URLs, email subject lines).
+4. Sends the formatted summary to your Slack DM (or a channel you specify).
+
+**Prerequisites**
+
+The skill requires MCP integrations for the sources you want to search. Configure the relevant integrations in your Claude Code session before invoking the skill:
+- **Slack** — [Slack MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/slack)
+- **Jira** — [Atlassian Jira MCP server](https://github.com/sooperset/mcp-atlassian)
+- **Confluence** — [Atlassian Confluence MCP server](https://github.com/sooperset/mcp-atlassian) (same server as Jira)
+- **Email** — [Gmail MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/gmail) or [Outlook MCP server](https://github.com/modelcontextprotocol/servers)
+
+If a source is not connected, the skill notes it clearly and continues with the remaining sources.
 
 ## Repository Initialisation
 
