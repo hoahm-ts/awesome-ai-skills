@@ -1,0 +1,25 @@
+# Cursor AI Rules
+# See: https://docs.cursor.com/context/rules-for-ai
+
+## Project Context
+This repository is a curated collection of configuration files and instructions for AI coding agents.
+Read AGENTS.md for the canonical coding guidelines before making any changes.
+
+## General Rules
+- Make the smallest possible change that fully addresses the task.
+- Match the style and conventions already present in the file being edited.
+- Do not modify files unrelated to the current task.
+- Do not commit secrets, credentials, or sensitive data.
+
+## Code Style
+- Use descriptive, explicit names over short abbreviations.
+- Keep functions small and focused on a single responsibility.
+- Use 2-space indentation for JSON files.
+- Use GitHub Flavored Markdown for all `.md` files.
+
+## Commit Messages
+Use Conventional Commits format: feat:, fix:, docs:, chore:, refactor:, test:
+
+## File Structure
+Follow the directory structure documented in README.md.
+New AI agent config files belong at the repo root or inside their designated directory.
