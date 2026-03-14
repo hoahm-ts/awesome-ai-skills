@@ -26,6 +26,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
+          install-mode: goinstall
           working-directory: src
           args: --new-from-rev=origin/main --timeout=5m --config .golangci.yml
 
