@@ -2,14 +2,27 @@ app:
   name: {{default "awesome-ai-skills" .Env.APP_NAME}}
   env: {{default "development" .Env.APP_ENV}}
   port: {{default "8080" .Env.APP_PORT}}
-  log_level: {{default "info" .Env.APP_LOG_LEVEL}}
+  log_level: {{default "info" .Env.LOG_LEVEL}}
   read_timeout_seconds: {{default "15" .Env.APP_READ_TIMEOUT_SECONDS}}
   write_timeout_seconds: {{default "15" .Env.APP_WRITE_TIMEOUT_SECONDS}}
   idle_timeout_seconds: {{default "60" .Env.APP_IDLE_TIMEOUT_SECONDS}}
   shutdown_timeout_seconds: {{default "30" .Env.APP_SHUTDOWN_TIMEOUT_SECONDS}}
 
 database:
+  # DSN takes precedence over per-field settings when set.
   dsn: {{default "" .Env.DATABASE_DSN}}
+  # Per-field settings used when DATABASE_DSN is empty.
+  host: {{default "localhost" .Env.DB_HOST}}
+  port: {{default "5432" .Env.DB_PORT}}
+  name: {{default "" .Env.DB_NAME}}
+  user: {{default "" .Env.DB_USER}}
+  password: {{default "" .Env.DB_PASSWORD}}
+  # TLS settings — follow GCP Cloud SQL / AWS RDS best practices.
+  # ssl_mode: disable | require | verify-ca | verify-full
+  ssl_mode: {{default "disable" .Env.DB_SSL_MODE}}
+  ssl_cert: {{default "" .Env.DB_SSL_CERT}}
+  ssl_key: {{default "" .Env.DB_SSL_KEY}}
+  ssl_root_cert: {{default "" .Env.DB_SSL_ROOT_CERT}}
 
 redis:
   addr: {{default "localhost:6379" .Env.REDIS_ADDR}}

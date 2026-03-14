@@ -1,14 +1,25 @@
 APP_NAME=awesome-ai-skills
 APP_ENV=development
 APP_PORT=8080
-APP_LOG_LEVEL=info
+LOG_LEVEL=info
 APP_READ_TIMEOUT_SECONDS=15
 APP_WRITE_TIMEOUT_SECONDS=15
 APP_IDLE_TIMEOUT_SECONDS=60
 APP_SHUTDOWN_TIMEOUT_SECONDS=30
 
-# PostgreSQL
-DATABASE_DSN=postgres://user:password@localhost:5432/awesome_ai_skills?sslmode=disable
+# PostgreSQL — set DATABASE_DSN (full URL) OR the per-field vars below.
+DATABASE_DSN=
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=awesome_ai_skills
+DB_USER=postgres
+DB_PASSWORD=
+# TLS/SSL — follows GCP Cloud SQL and AWS RDS best practices.
+# DB_SSL_MODE: disable | require | verify-ca | verify-full
+DB_SSL_MODE=disable
+DB_SSL_CERT=
+DB_SSL_KEY=
+DB_SSL_ROOT_CERT=
 
 # Redis
 REDIS_ADDR=localhost:6379

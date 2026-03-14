@@ -10,6 +10,15 @@ app:
 
 database:
   dsn: ""
+  host: localhost
+  port: 5432
+  name: ""
+  user: ""
+  password: ""
+  ssl_mode: disable
+  ssl_cert: ""
+  ssl_key: ""
+  ssl_root_cert: ""
 
 redis:
   addr: localhost:6379
