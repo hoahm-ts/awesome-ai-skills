@@ -1,12 +1,14 @@
-// Package config loads and validates application configuration from environment variables.
+// Package config loads and validates application configuration from a YAML file.
+// The YAML file is rendered at container startup by dockerize from etc/config/template.yml.
 // Configuration is read once at startup in the composition root and injected via DI.
 package config
 
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"time"
+
+	pkgyaml "github.com/hoahm-ts/awesome-ai-skills/pkg/yaml"
 )
 
 // Config holds the complete application configuration.
@@ -21,10 +23,19 @@ type Config struct {
 
 // AppConfig holds HTTP server and general application settings.
 type AppConfig struct {
-	Name            string        `yaml:"name"`
-	Env             string        `yaml:"env"`
-	Port            int           `yaml:"port"`
-	LogLevel        string        `yaml:"log_level"`
+	Name     string `yaml:"name"`
+	Env      string `yaml:"env"`
+	Port     int    `yaml:"port"`
+	LogLevel string `yaml:"log_level"`
+
+	// Raw integer seconds read from YAML; the Duration fields below are derived from these.
+	TimeoutSeconds         int `yaml:"timeout_seconds"`
+	ReadTimeoutSeconds     int `yaml:"read_timeout_seconds"`
+	WriteTimeoutSeconds    int `yaml:"write_timeout_seconds"`
+	IdleTimeoutSeconds     int `yaml:"idle_timeout_seconds"`
+	ShutdownTimeoutSeconds int `yaml:"shutdown_timeout_seconds"`
+
+	// Computed from *Seconds fields after loading — not marshalled.
 	Timeout         time.Duration `yaml:"-"`
 	ReadTimeout     time.Duration `yaml:"-"`
 	WriteTimeout    time.Duration `yaml:"-"`
@@ -52,10 +63,11 @@ type DatabaseConfig struct {
 	SSLKey      string `yaml:"ssl_key"`       // path to client private key (mutual TLS)
 	SSLRootCert string `yaml:"ssl_root_cert"` // path to root CA cert (verify-ca / verify-full)
 
-	// Connection pool settings (not loaded from YAML).
-	MaxOpenConns int           `yaml:"-"`
-	MaxIdleConns int           `yaml:"-"`
-	MaxLifetime  time.Duration `yaml:"-"`
+	// Connection pool settings. Zero values trigger defaults in LoadFromFile.
+	MaxOpenConns       int           `yaml:"max_open_conns"`
+	MaxIdleConns       int           `yaml:"max_idle_conns"`
+	MaxLifetimeSeconds int           `yaml:"max_lifetime_seconds"`
+	MaxLifetime        time.Duration `yaml:"-"` // derived from MaxLifetimeSeconds after loading
 }
 
 // EffectiveDSN returns the DSN to use for opening the database connection.
@@ -107,83 +119,73 @@ type DatadogConfig struct {
 	AgentHost   string `yaml:"agent_host"`
 }
 
-// Load reads configuration from environment variables and returns a validated Config.
-// Returns an error if any required value is missing.
+// Load reads configuration from the YAML file specified by the CONFIG_PATH environment variable,
+// falling back to etc/config/app_config.yml when unset.
+// The YAML file is normally rendered at container startup by dockerize from etc/config/template.yml.
 func Load() (*Config, error) {
-	cfg := &Config{
-		App: AppConfig{
-			Name:            getEnv("APP_NAME", "awesome-ai-skills"),
-			Env:             getEnv("APP_ENV", "development"),
-			Port:            getEnvInt("APP_PORT", 8080),
-			LogLevel:        getEnv("LOG_LEVEL", "info"),
-			Timeout:         getEnvDuration("APP_TIMEOUT_SECONDS", 30),
-			ReadTimeout:     getEnvDuration("APP_READ_TIMEOUT_SECONDS", 15),
-			WriteTimeout:    getEnvDuration("APP_WRITE_TIMEOUT_SECONDS", 15),
-			IdleTimeout:     getEnvDuration("APP_IDLE_TIMEOUT_SECONDS", 60),
-			ShutdownTimeout: getEnvDuration("APP_SHUTDOWN_TIMEOUT_SECONDS", 30),
-		},
-		Database: DatabaseConfig{
-			DSN:          getEnv("DATABASE_DSN", ""),
-			Host:         getEnv("DB_HOST", "localhost"),
-			Port:         getEnvInt("DB_PORT", 5432),
-			Name:         getEnv("DB_NAME", ""),
-			User:         getEnv("DB_USER", ""),
-			Password:     getEnv("DB_PASSWORD", ""),
-			SSLMode:      getEnv("DB_SSL_MODE", "disable"),
-			SSLCert:      getEnv("DB_SSL_CERT", ""),
-			SSLKey:       getEnv("DB_SSL_KEY", ""),
-			SSLRootCert:  getEnv("DB_SSL_ROOT_CERT", ""),
-			MaxOpenConns: getEnvInt("DB_MAX_OPEN_CONNS", 25),
-			MaxIdleConns: getEnvInt("DB_MAX_IDLE_CONNS", 5),
-			MaxLifetime:  getEnvDuration("DB_CONN_MAX_LIFETIME_SECONDS", 300),
-		},
-		Redis: RedisConfig{
-			Addr:     getEnv("REDIS_ADDR", "localhost:6379"),
-			Password: getEnv("REDIS_PASSWORD", ""),
-		},
-		Kafka: KafkaConfig{
-			Brokers: []string{getEnv("KAFKA_BROKER", "localhost:9092")},
-			GroupID: getEnv("KAFKA_GROUP_ID", "awesome-ai-skills"),
-		},
-		Temporal: TemporalConfig{
-			HostPort:  getEnv("TEMPORAL_HOST_PORT", "localhost:7233"),
-			Namespace: getEnv("TEMPORAL_NAMESPACE", "default"),
-			TaskQueue: getEnv("TEMPORAL_TASK_QUEUE", "default"),
-		},
-		Datadog: DatadogConfig{
-			ServiceName: getEnv("APP_NAME", "awesome-ai-skills"),
-			Env:         getEnv("DD_ENV", "development"),
-			AgentHost:   getEnv("DD_AGENT_HOST", "localhost"),
-		},
+	path := os.Getenv("CONFIG_PATH")
+	if path == "" {
+		path = "etc/config/app_config.default.yml"
+	}
+	return LoadFromFile(path)
+}
+
+// Default values for database connection-pool settings when omitted from the YAML file.
+const (
+	defaultMaxOpenConns       = 25
+	defaultMaxIdleConns       = 5
+	defaultMaxLifetimeSeconds = 300
+)
+
+// LoadFromFile reads and validates application configuration from the YAML file at path.
+// After parsing, it derives the time.Duration fields from the raw integer-seconds fields
+// and applies default values for database connection-pool settings when they are unset.
+func LoadFromFile(path string) (*Config, error) {
+	cfg, err := pkgyaml.ParseFile[Config](path)
+	if err != nil {
+		return nil, err
 	}
 
-	if cfg.Database.DSN == "" && (cfg.Database.Host == "" || cfg.Database.Name == "" || cfg.Database.User == "") {
-		return nil, fmt.Errorf("database configuration required: set DATABASE_DSN or DB_HOST + DB_NAME + DB_USER")
+	// Derive time.Duration fields from the raw integer-seconds values.
+	cfg.App.Timeout = time.Duration(cfg.App.TimeoutSeconds) * time.Second
+	cfg.App.ReadTimeout = time.Duration(cfg.App.ReadTimeoutSeconds) * time.Second
+	cfg.App.WriteTimeout = time.Duration(cfg.App.WriteTimeoutSeconds) * time.Second
+	cfg.App.IdleTimeout = time.Duration(cfg.App.IdleTimeoutSeconds) * time.Second
+	cfg.App.ShutdownTimeout = time.Duration(cfg.App.ShutdownTimeoutSeconds) * time.Second
+
+	// Apply operational defaults for connection-pool settings when absent from the YAML file.
+	if cfg.Database.MaxOpenConns == 0 {
+		cfg.Database.MaxOpenConns = defaultMaxOpenConns
+	}
+	if cfg.Database.MaxIdleConns == 0 {
+		cfg.Database.MaxIdleConns = defaultMaxIdleConns
+	}
+	if cfg.Database.MaxLifetimeSeconds == 0 {
+		cfg.Database.MaxLifetimeSeconds = defaultMaxLifetimeSeconds
+	}
+	cfg.Database.MaxLifetime = time.Duration(cfg.Database.MaxLifetimeSeconds) * time.Second
+
+	if err := validate(cfg); err != nil {
+		return nil, err
+	}
+
+	// Normalise: ensure DSN is always set so consumers can use cfg.Database.DSN directly.
+	if cfg.Database.DSN == "" {
+		cfg.Database.DSN = cfg.Database.EffectiveDSN()
 	}
 
 	return cfg, nil
 }
 
-func getEnv(key, defaultValue string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+// validate checks that required fields are present and that numeric fields are in range.
+func validate(cfg *Config) error {
+	if cfg.App.TimeoutSeconds < 0 || cfg.App.ReadTimeoutSeconds < 0 ||
+		cfg.App.WriteTimeoutSeconds < 0 || cfg.App.IdleTimeoutSeconds < 0 ||
+		cfg.App.ShutdownTimeoutSeconds < 0 {
+		return fmt.Errorf("app timeout_seconds values must be non-negative")
 	}
-	return defaultValue
-}
-
-func getEnvInt(key string, defaultValue int) int {
-	v := os.Getenv(key)
-	if v == "" {
-		return defaultValue
+	if cfg.Database.DSN == "" && (cfg.Database.Host == "" || cfg.Database.Name == "" || cfg.Database.User == "") {
+		return fmt.Errorf("database configuration required: set dsn or host + name + user in the config file")
 	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return defaultValue
-	}
-	return n
-}
-
-// getEnvDuration reads an env var as an integer number of seconds and returns a time.Duration.
-func getEnvDuration(key string, defaultSeconds int) time.Duration {
-	return time.Duration(getEnvInt(key, defaultSeconds)) * time.Second
+	return nil
 }
