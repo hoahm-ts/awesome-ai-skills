@@ -438,7 +438,7 @@ func MyWorkflow(ctx workflow.Context) error {
 
 Activities are the unit of work that performs all I/O and non-deterministic operations. They must be designed to be safe to retry.
 
-- **Idempotency**: every Activity must be safe to run more than once with the same inputs. Use idempotency keys when calling external APIs.
+- **Idempotency**: every Activity must be safe to run more than once with the same inputs. Use idempotency keys when calling external APIs. For non-idempotent operations (e.g. charging a card), set `MaximumAttempts: 1` and apply exactly-once execution patterns (unique identifiers or deduplication strategies) to prevent duplicate side effects.
 - **Heartbeating**: long-running Activities must call `activity.RecordHeartbeat(ctx, details...)` periodically so the worker can detect failures and resume from the last checkpoint.
 - **Context propagation**: always accept `context.Context` as the first parameter so that Temporal can cancel the Activity on timeout.
 - **Return meaningful errors**: return non-retryable errors with `temporal.NewNonRetryableApplicationError` for permanent failures; return retryable errors (or plain `error`) for transient failures.
@@ -561,30 +561,73 @@ func OrderWorkflow(ctx workflow.Context, order Order) error {
 
 ### Retries and Timeouts
 
-Always configure timeouts explicitly — never rely on Temporal's unlimited defaults in production.
+Always configure timeouts and retry policies explicitly — never rely on Temporal's unlimited defaults in production.
+
+**Timeout options:**
 
 | Option | Purpose | Guideline |
 |---|---|---|
-| `StartToCloseTimeout` | Max time for a single Activity attempt | Required; set based on p99 latency |
-| `ScheduleToCloseTimeout` | Max total time including all retries | Set for Activities with SLA requirements |
+| `StartToCloseTimeout` | Max time for a single Activity attempt | Required; must be greater than the upstream service's own request timeout |
+| `ScheduleToCloseTimeout` | Max total time including all retries | Must accommodate the worst-case cumulative retry duration; set for Activities with SLA requirements |
 | `HeartbeatTimeout` | Max time between heartbeats | Required for long-running Activities |
 | `WorkflowExecutionTimeout` | Max lifetime of an entire workflow | Set to prevent unbounded open workflows |
 | `WorkflowRunTimeout` | Max lifetime of a single workflow run | Useful for workflows that use `ContinueAsNew` |
 
+**Timeout rules:**
+- `StartToCloseTimeout` must be greater than the upstream service's own request timeout to avoid races where Temporal cancels the Activity before the service has a chance to respond.
+- `ScheduleToCloseTimeout` must cover the worst-case cumulative retry scenario: all retry attempts plus the wait periods between them. Use the [Temporal retry simulator](https://temporal-time.netlify.app/) or the [Temporal Activity Retry Simulator](https://docs.temporal.io/develop/activity-retry-simulator) to calculate a safe value before setting this in production.
+
+**Exponential backoff strategy:**
+- Use a `BackoffCoefficient` between **1.5 and 2.0** to balance retry frequency against resource consumption.
+- Cap `MaximumInterval` based on the nature of the upstream:
+  - HTTP / lightweight internal APIs: **10–30 seconds**
+  - Slow or unstable third-party services: **30–60 seconds**
+- For **fast-responding upstreams**: use a short `InitialInterval` (1–2 s) with a coefficient of 2.0.
+- For **slow or unstable upstreams**: use a longer `InitialInterval` (2–5 s) and a larger `MaximumInterval` (30–60 s).
+
+**Retry limits:**
+- Avoid unlimited retries (`MaximumAttempts: 0`) for critical external calls — this risks resource exhaustion and cascading failures.
+- Set a finite `MaximumAttempts` or a `ScheduleToCloseTimeout` with a compensation path for failure scenarios.
+- `MaximumAttempts` **includes the initial attempt**:
+  - `1` → no retries (execute once and stop).
+  - `0` → unlimited retries (use only for non-critical, fully idempotent operations).
+- For **single-shot operations** (e.g. charging a payment), set `MaximumAttempts: 1` and ensure strong alerting for immediate failure notification.
+
 ```go
-ao := workflow.ActivityOptions{
-    StartToCloseTimeout:  30 * time.Second,
-    ScheduleToCloseTimeout: 5 * time.Minute,
-    HeartbeatTimeout:     10 * time.Second,
+// Fast upstream (e.g. internal HTTP service): short intervals, higher coefficient
+fastAO := workflow.ActivityOptions{
+    StartToCloseTimeout:    10 * time.Second,
+    ScheduleToCloseTimeout: 2 * time.Minute,
     RetryPolicy: &temporal.RetryPolicy{
-        InitialInterval:    time.Second,
-        BackoffCoefficient: 2.0,
-        MaximumInterval:    30 * time.Second,
-        MaximumAttempts:    5,
+        InitialInterval:        time.Second,
+        BackoffCoefficient:     2.0,
+        MaximumInterval:        30 * time.Second,
+        MaximumAttempts:        5,
         NonRetryableErrorTypes: []string{"PermanentProcessError"},
     },
 }
-ctx = workflow.WithActivityOptions(ctx, ao)
+
+// Slow / unstable upstream (e.g. third-party payment provider): longer intervals, lower coefficient
+slowAO := workflow.ActivityOptions{
+    StartToCloseTimeout:    60 * time.Second,
+    ScheduleToCloseTimeout: 10 * time.Minute,
+    HeartbeatTimeout:       15 * time.Second,
+    RetryPolicy: &temporal.RetryPolicy{
+        InitialInterval:        3 * time.Second,
+        BackoffCoefficient:     1.5,
+        MaximumInterval:        60 * time.Second,
+        MaximumAttempts:        4,
+        NonRetryableErrorTypes: []string{"PermanentProcessError"},
+    },
+}
+
+// Single-shot operation (e.g. charge a payment — must not retry)
+singleShotAO := workflow.ActivityOptions{
+    StartToCloseTimeout: 30 * time.Second,
+    RetryPolicy: &temporal.RetryPolicy{
+        MaximumAttempts: 1,
+    },
+}
 ```
 
 ### ContinueAsNew
@@ -651,7 +694,10 @@ Before requesting a review on Temporal-related changes, verify:
 - [ ] Workflow functions contain no non-deterministic code (no `time.Now`, no I/O, no raw goroutines).
 - [ ] Every Activity is idempotent and accepts `context.Context` as the first parameter.
 - [ ] Long-running Activities call `activity.RecordHeartbeat` with a `HeartbeatTimeout` set.
-- [ ] `StartToCloseTimeout` is set on every `ActivityOptions` block.
+- [ ] `StartToCloseTimeout` is set on every `ActivityOptions` block and is greater than the upstream service timeout.
+- [ ] `ScheduleToCloseTimeout` covers the worst-case cumulative retry duration (validated with the retry simulator).
+- [ ] `MaximumAttempts` is explicitly set; unlimited retries (`0`) are avoided for critical external calls.
+- [ ] Non-idempotent Activities use `MaximumAttempts: 1` with alerting, or an exactly-once deduplication strategy.
 - [ ] Non-retryable errors use `temporal.NewNonRetryableApplicationError`.
 - [ ] Workflow logic changes use `workflow.GetVersion` to protect in-flight executions.
 - [ ] Workflows that process unbounded events use `workflow.NewContinueAsNewError`.
