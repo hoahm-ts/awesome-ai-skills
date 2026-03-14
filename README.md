@@ -47,6 +47,7 @@ repo root/
     ├── go.mod
     ├── go.sum
     ├── Makefile
+    ├── .golangci.yml                # golangci-lint configuration
     ├── api/                         # OpenAPI specs + codegen config/inputs
     │   └── openapi.yaml
     ├── cmd/                         # Application binaries
