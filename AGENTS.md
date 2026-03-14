@@ -436,6 +436,20 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
   ```
 - Document each topic in the codebase with an inline comment: the event schema it carries, the producing service, and the expected consumers.
 
+### Message Keys & Partitioning
+
+- Use a stable, deterministic business key (e.g. entity ID or a composite key) as the message key to route all events for the same entity to the same partition, preserving total order for that entity:
+  ```go
+  // Stable composite key — always routes to the same partition.
+  key := fmt.Sprintf("%s:%s", orderID, customerID)
+  ```
+- Keep key cardinality proportional to the partition count: too few unique keys leave partitions underutilised; too many unique keys cannot improve ordering and may create hot partitions.
+- Use `null` keys only for purely parallel, order-independent workloads (e.g. fire-and-forget notifications). Messages with `null` keys are distributed round-robin across partitions.
+- Never use random or time-based values (e.g. UUIDs, timestamps) as keys — they destroy ordering guarantees and create uneven partition load over time.
+- Encode keys as UTF-8 strings (entity ID, or fields joined with `:`) rather than opaque bytes to aid debugging and re-processing.
+- Scale consumer group instances up to — but never beyond — the partition count; extra instances remain idle and waste resources.
+- To achieve parallel processing within a topic, increase the partition count at topic creation time or use `null` keys where ordering is not required. Partition counts cannot be reduced after creation.
+
 ### Client Library
 
 - Pick one library and use it consistently across all services: [franz-go](https://github.com/twmb/franz-go) (recommended for its idiomatic Go API and first-class context support) or [confluent-kafka-go](https://github.com/confluentinc/confluent-kafka-go).
@@ -468,16 +482,50 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
   ```
 - Key messages consistently: use a stable business key (e.g. entity ID) to preserve ordering within a partition.
 - Tune `linger.ms` and `batch.size` deliberately: lower values favour latency; higher values favour throughput. Document your chosen values and the reason.
+- Enable compression at the producer level to reduce broker storage and network I/O. Prefer `snappy` for balanced CPU/ratio; use `zstd` for maximum compression on high-volume topics:
+  ```go
+  kgo.ProducerBatchCompression(kgo.SnappyCompression())
+  ```
+- Pass `context.Context` to every produce call to support timeouts and cancellation:
+  ```go
+  ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+  defer cancel()
+  if err := producer.Produce(ctx, msg); err != nil { ... }
+  ```
 
 ### Consumer
 
+- **Consumer Groups**: assign a unique `group.id` per logical consumer (one consumer group per independent processing pipeline). Never share a group ID between unrelated services — this creates split-brain processing where each service receives only a fraction of messages.
 - Commit offsets **only after** processing succeeds to guarantee at-least-once delivery; never auto-commit.
-- Assign a unique `group.id` per logical consumer; never share a group ID between unrelated services.
 - Handle rebalances explicitly: flush or checkpoint in-flight work inside `ConsumerGroupHandler.Cleanup` before returning, so no messages are lost mid-batch.
 - Set `max.poll.interval.ms` long enough to cover the worst-case processing time; breach causes the consumer to leave the group and trigger rebalance.
-- Apply back-pressure: pass messages over a bounded channel to the processing goroutine pool; do not accumulate unbounded in memory:
+- **Batch Fetching**: tune `fetch.min.bytes` and `fetch.max.wait.ms` to control the trade-off between latency and throughput. Higher `fetch.min.bytes` reduces the number of fetch requests but increases end-to-end latency; set `fetch.max.wait.ms` as an upper bound:
   ```go
-  work := make(chan *Message, cfg.WorkerBufferSize) // bounded
+  kgo.FetchMinBytes(1<<10),        // 1 KiB minimum before returning
+  kgo.FetchMaxWait(500*time.Millisecond),
+  ```
+- **Multi-threaded Consumers**: process messages in parallel using a fixed goroutine pool fed by a bounded channel. Keep the poller single-threaded (Kafka partition assignment is single-threaded) and fan out to workers:
+  ```go
+  work := make(chan *kgo.Record, cfg.WorkerBuffer)
+
+  go poll(ctx, client, work) // single poller goroutine
+
+  var wg sync.WaitGroup
+  for i := 0; i < cfg.Workers; i++ {
+    wg.Add(1)
+    go func() {
+      defer wg.Done()
+      for rec := range work {
+        process(ctx, rec)
+      }
+    }()
+  }
+  ```
+- **Context Usage**: pass a `context.Context` derived from the application lifecycle into every poll and process call. Use `context.WithTimeout` for individual message processing to enforce per-message deadlines and prevent slow consumers from blocking the entire group:
+  ```go
+  processCtx, cancel := context.WithTimeout(ctx, cfg.ProcessingTimeout)
+  defer cancel()
+  if err := handler.Handle(processCtx, rec); err != nil { ... }
   ```
 - Always perform a **graceful shutdown**: stop polling new messages → drain the work channel → commit offsets → close the client (see [Graceful Shutdown](#graceful-shutdown) below).
 
