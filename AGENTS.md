@@ -396,3 +396,120 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
 
 - **Test tables**: use table-driven tests with `t.Run` subtests for repeated logic. Name the slice `tests` and each case `tt`. Use `give` / `want` prefixes for input/output fields. Avoid complex conditional logic or branching inside table test loops — split into separate `Test...` functions instead.
 - **Functional options**: for constructors/APIs with three or more optional arguments (or those expected to grow), use the functional options pattern with an `Option` interface and unexported `options` struct rather than long parameter lists or boolean flags.
+
+---
+
+## GoCraft/Work Best Practices (Go)
+
+> These guidelines apply to all background job processing that uses [GoCraft/Work](https://github.com/gocraft/work) as the job queue library.
+
+### Worker Pool Lifecycle
+
+- Create the worker pool in the composition root and pass it as a dependency — never create a pool inside a domain package.
+- Always call `pool.Stop()` on application shutdown to drain in-flight jobs before the process exits:
+  ```go
+  pool := work.NewWorkerPool(AppContext{}, concurrency, namespace, redisPool)
+  // ... register jobs ...
+  pool.Start()
+
+  quit := make(chan os.Signal, 1)
+  signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+  <-quit
+
+  pool.Stop() // blocks until all in-flight jobs finish
+  ```
+- Use a single `work.Pool` (Redis connection pool) per process; share it between the enqueuer and the worker pool.
+
+### Job Registration
+
+- Register all job handlers before calling `pool.Start()`.
+- Group job registrations in a single, dedicated function (e.g. `RegisterJobs(pool *work.WorkerPool)`) inside the wiring layer — not scattered across domain packages.
+- Use `JobOptions` to specify concurrency, max retries, and backoff at registration time rather than hard-coding them inline:
+  ```go
+  pool.JobWithOptions("send_email", work.JobOptions{
+      MaxFails:    5,
+      Concurrency: 10,
+  }, handler.SendEmail)
+  ```
+
+### Handler Signatures and Argument Passing
+
+- All job handlers must match the signature `func(job *work.Job) error`.
+- Deserialise job arguments into a strongly typed struct at the top of the handler; return an error immediately if deserialisation fails:
+  ```go
+  type SendEmailArgs struct {
+      UserID  int64  `json:"user_id"`
+      Subject string `json:"subject"`
+  }
+
+  func (h *EmailHandler) SendEmail(job *work.Job) error {
+      var args SendEmailArgs
+      if err := job.UnmarshalPayload(&args); err != nil {
+          return fmt.Errorf("unmarshal payload: %w", err)
+      }
+      // ...
+  }
+  ```
+- Never read raw `job.Args` map entries directly in business logic — centralise argument extraction in a helper or unmarshal into a typed struct.
+
+### Enqueuing Jobs
+
+- Wrap `work.Enqueuer` behind an interface so callers depend on the interface rather than the concrete type:
+  ```go
+  type JobEnqueuer interface {
+      Enqueue(jobName string, args work.Q) (*work.Job, error)
+      EnqueueIn(jobName string, secondsFromNow int64, args work.Q) (*work.ScheduledJob, error)
+  }
+  ```
+- Use `work.Q` (a `map[string]interface{}`) only at the enqueuing boundary; convert to typed structs as soon as the job is consumed.
+- Prefer `EnqueueUnique` when duplicate jobs must be suppressed (e.g. processing the same resource multiple times within a short window).
+
+### Error Handling and Retries
+
+- Return a non-nil error from a handler to signal that the job should be retried according to its `MaxFails` / backoff policy.
+- Return `nil` to mark the job as successfully completed — even if the operation was a no-op.
+- Use sentinel errors (exported `var Err...`) when callers or middleware need to distinguish failure modes:
+  ```go
+  var ErrSkipRetry = errors.New("skip retry")
+  ```
+- Do not `panic` inside a handler; rely on the middleware panic-recovery layer instead.
+
+### Middleware
+
+- Register middleware on the pool (not on individual handlers) for cross-cutting concerns: structured logging, panic recovery, metrics, and distributed tracing.
+- Keep each middleware focused on a single concern. Chain middleware in this order:
+  1. Panic recovery (outermost — must always run)
+  2. Distributed trace / request-ID injection
+  3. Structured logging (log job name, duration, and outcome)
+  4. Metrics / instrumentation
+- Access the job's name and arguments via `job.Name` and `job.Args` inside middleware — do not re-parse the payload.
+
+### Concurrency and Throttling
+
+- Set per-job `Concurrency` at registration time based on downstream capacity (DB connections, external API rate limits).
+- The pool-level `concurrency` argument is the global cap; per-job concurrency is an additional constraint.
+- Avoid setting global concurrency higher than the Redis connection pool size to prevent connection starvation.
+
+### Observability
+
+- Log the job name, enqueue time, attempt number (`job.Fails`), and final outcome (success or error) at the middleware layer.
+- Emit a counter metric for `job.completed` and `job.failed` tagged with the job name.
+- Include a correlation/request ID in job arguments so logs across enqueue and execute can be correlated.
+
+### Testing Job Handlers
+
+- Unit-test handlers by constructing a `*work.Job` directly — no Redis required:
+  ```go
+  func TestSendEmail(t *testing.T) {
+      job := &work.Job{}
+      job.SetArg("user_id", int64(42))
+      job.SetArg("subject", "Hello")
+
+      h := &EmailHandler{mailer: &fakeMailer{}}
+      err := h.SendEmail(job)
+      require.NoError(t, err)
+  }
+  ```
+- Use fakes or mocks for all external dependencies (mailers, DB, HTTP clients) injected into the handler struct.
+- Test retry behaviour by asserting that the handler returns a non-nil error when a dependency fails.
+- Integration tests that require Redis should use a dedicated test Redis instance and clean up all keys with a `t.Cleanup` function.
