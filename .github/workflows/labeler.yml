@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   label:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # or "self-hosted-cpu"
     steps:
       - uses: actions/labeler@v5
         with:
