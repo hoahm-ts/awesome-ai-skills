@@ -91,7 +91,7 @@ The workflow is defined in `.github/workflows/labeler.yml` and uses the mapping 
 |---|---|---|
 | `chore` | `chore/*` | — |
 | `feature` | `feat/*` | — |
-| `spec` | `spec/*` | `openspec/**/*` (excluding `openspec/changes/archive/**/*`) |
+| `spec` | `spec/*` | `openspec/**/*` (excluding archive) |
 | `spec-archive` | — | `openspec/changes/archive/**/*` |
 | `fix` | `fix/*`, `hotfix/*` | — |
 | `docs` | `docs/*` | `docs/**/*` |
