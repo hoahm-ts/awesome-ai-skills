@@ -17,7 +17,8 @@ repo root/
 │   ├── commands/                    # Claude custom slash commands
 │   └── skills/                      # Claude reusable skills
 └── .github/
-    └── copilot-instructions.md      # GitHub Copilot instructions
+    ├── copilot-instructions.md      # GitHub Copilot instructions
+    └── init-labels.sh               # Script to create standard GitHub issue labels
 ```
 
 ## Overview
@@ -39,6 +40,45 @@ This repository provides a unified set of instructions and configuration files f
 1. Clone this repository as a reference or template.
 2. Copy the relevant configuration files into your own project.
 3. Customise the instructions to match your project's conventions, tech stack, and coding standards.
+
+## Repository Initialisation
+
+When setting up a new repository for the first time, run the steps below to apply the team's standard configuration.
+
+### Prerequisites
+
+- [GitHub CLI (`gh`)](https://cli.github.com/) installed and authenticated (`gh auth login`).
+- You are inside the root of the repository you want to initialise.
+
+### 1. Create standard issue labels
+
+The repository ships with a script that creates all required GitHub labels in one step:
+
+```bash
+bash .github/init-labels.sh
+```
+
+This creates the following labels:
+
+| Label | Colour |
+|---|---|
+| `feature` | `#0075ca` |
+| `spec` | `#e4e669` |
+| `chore` | `#ededed` |
+| `fix` | `#d73a4a` |
+| `docs` | `#0075ca` |
+| `refactor` | `#c5def5` |
+| `test` | `#bfd4f2` |
+| `spec-archive` | `#f9d0c4` |
+| `enhancement` | `#a2eeef` |
+| `security` | `#ff0000` |
+| `migration/database` | `#8a2be2` |
+
+> **Note:** The script uses `--force` so it is safe to re-run at any time. However, any colour or description customisations you have made to a same-named label will be overwritten — review the script before re-running on a repository with hand-edited labels.
+
+### 2. Copy AI agent configuration files
+
+Copy the relevant files from this repository into your project (see the [Directory Structure](#directory-structure) table above) and customise them for your tech stack.
 
 ## Contributing
 
