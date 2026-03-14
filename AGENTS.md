@@ -396,3 +396,164 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
 
 - **Test tables**: use table-driven tests with `t.Run` subtests for repeated logic. Name the slice `tests` and each case `tt`. Use `give` / `want` prefixes for input/output fields. Avoid complex conditional logic or branching inside table test loops — split into separate `Test...` functions instead.
 - **Functional options**: for constructors/APIs with three or more optional arguments (or those expected to grow), use the functional options pattern with an `Option` interface and unexported `options` struct rather than long parameter lists or boolean flags.
+
+---
+
+## PostgreSQL & GORM Best Practices (Go)
+
+> Follow these guidelines for all code that interacts with PostgreSQL via [GORM](https://gorm.io/).
+
+### Model Definition
+
+- Embed `gorm.Model` only when you need the built-in `ID`, `CreatedAt`, `UpdatedAt`, and `DeletedAt` fields. Define these fields explicitly when you need different types or naming:
+  ```go
+  type User struct {
+    ID        uuid.UUID      `gorm:"type:uuid;primaryKey;default:(gen_random_uuid())"`
+    CreatedAt time.Time
+    UpdatedAt time.Time
+    DeletedAt gorm.DeletedAt `gorm:"index"`
+    Name      string         `gorm:"not null"`
+    Email     string         `gorm:"uniqueIndex;not null"`
+  }
+  ```
+- Always annotate model fields with `gorm` struct tags. Declare constraints (`not null`, `uniqueIndex`, `default`) in tags so GORM-generated DDL matches the database schema.
+- Use `uuid.UUID` (from `github.com/google/uuid`) as the primary key type rather than auto-increment integers for distributed-safe IDs.
+- Add JSON tags alongside GORM tags when the model is also used in API responses; otherwise keep persistence models and transport models separate.
+
+### Connection & Pool Configuration
+
+- Never hard-code DSN strings; read them from environment variables or a secrets manager at the single composition root.
+- Configure the connection pool explicitly after opening a connection:
+  ```go
+  sqlDB, err := db.DB()
+  if err != nil {
+    return fmt.Errorf("get underlying sql.DB: %w", err)
+  }
+  sqlDB.SetMaxOpenConns(25)
+  sqlDB.SetMaxIdleConns(5)
+  sqlDB.SetConnMaxLifetime(5 * time.Minute)
+  ```
+- Always pass a `context.Context` to GORM operations using `db.WithContext(ctx)` so that queries respect request deadlines and cancellation signals.
+
+### Repository Pattern
+
+- Wrap all GORM access behind a repository interface defined in the domain package. Domain services must depend on the interface, not on `*gorm.DB` directly:
+  ```go
+  // domain/user/repository.go
+  type Repository interface {
+    FindByID(ctx context.Context, id uuid.UUID) (*User, error)
+    Save(ctx context.Context, u *User) error
+    Delete(ctx context.Context, id uuid.UUID) error
+  }
+
+  // infrastructure/postgres/user_repository.go
+  type userRepository struct {
+    db *gorm.DB
+  }
+
+  var _ user.Repository = (*userRepository)(nil) // compile-time check
+
+  func NewUserRepository(db *gorm.DB) user.Repository {
+    return &userRepository{db: db}
+  }
+  ```
+- Keep `*gorm.DB` confined to the infrastructure layer. Never let it leak into domain or handler packages.
+
+### Query Safety
+
+- Always use GORM's parameterised query methods (`Where`, `Find`, `First`, etc.) — never interpolate user input into raw SQL strings:
+  ```go
+  // Bad
+  db.Raw("SELECT * FROM users WHERE email = '" + email + "'")
+
+  // Good
+  db.WithContext(ctx).Where("email = ?", email).First(&user)
+  ```
+- Avoid `db.Raw` and `db.Exec` for data queries; use them only for DDL or queries that GORM cannot express. When you must use them, always use positional placeholders (`?` or `$1`).
+- Select only the columns you need with `.Select(...)` to avoid over-fetching, especially for large tables.
+
+### Avoiding N+1 Queries
+
+- Use `Preload` for loading associations when you need all records and their relations in one logical operation:
+  ```go
+  db.WithContext(ctx).Preload("Orders").Find(&users)
+  ```
+- Use `Joins` when you need to filter on the association or want a single SQL join:
+  ```go
+  db.WithContext(ctx).Joins("JOIN orders ON orders.user_id = users.id").Find(&users)
+  ```
+- Audit any loop that performs a database query inside it — refactor to a batch fetch instead.
+
+### Transactions
+
+- Use `db.Transaction` for multi-step writes that must succeed or fail together:
+  ```go
+  err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+    if err := tx.Create(&order).Error; err != nil {
+      return err // triggers rollback
+    }
+    if err := tx.Save(&inventory).Error; err != nil {
+      return err
+    }
+    return nil // triggers commit
+  })
+  ```
+- Propagate the transaction `*gorm.DB` to repository methods that must participate in the same transaction — accept `*gorm.DB` as an optional argument or use a transaction-aware context key.
+- Never start a transaction and forget to commit or roll it back. Prefer the `db.Transaction` callback form over manual `Begin`/`Commit`/`Rollback` to avoid leaks.
+
+### Error Handling
+
+- Always check `result.Error` after GORM operations; never assume a query succeeded silently.
+- Distinguish "not found" from other errors using `errors.Is`:
+  ```go
+  result := db.WithContext(ctx).First(&user, id)
+  if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+    return nil, ErrNotFound
+  }
+  if result.Error != nil {
+    return nil, fmt.Errorf("find user %v: %w", id, result.Error)
+  }
+  ```
+- Map GORM/PostgreSQL errors to domain errors at the repository boundary. Domain services must never import `gorm` or `lib/pq` error types.
+- Check for duplicate-key violations (PostgreSQL error code `23505`) when creating records where uniqueness is enforced:
+  ```go
+  // pgconn is from github.com/jackc/pgx/v5/pgconn
+  var pgErr *pgconn.PgError
+  if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+    return nil, ErrAlreadyExists
+  }
+  ```
+
+### Migrations
+
+- **Never** use `db.AutoMigrate` in production. Use a dedicated migration tool (e.g. [golang-migrate](https://github.com/golang-migrate/migrate) or [goose](https://github.com/pressly/goose)) with versioned, sequential SQL files.
+- Keep migration files in a `migrations/` directory at the repository root. Name them with a timestamp or sequential integer prefix: `001_create_users.up.sql` / `001_create_users.down.sql`.
+- Every migration must have a corresponding rollback (`down`) script.
+- Migrations must be backwards-compatible when deployed with zero downtime: add columns as nullable first, backfill, then add constraints in a subsequent migration.
+- Run migrations in CI against a real PostgreSQL instance to catch errors before merging.
+- `AutoMigrate` is acceptable in local development or test environments only; document this clearly with a build tag or environment check.
+
+### Soft Deletes
+
+- Use `gorm.DeletedAt` (which sets `DeletedAt` to the current time) for soft-deleting records. GORM automatically adds `WHERE deleted_at IS NULL` to all queries on models with this field.
+- Add a database index on the `deleted_at` column for tables with high query volume.
+- When you genuinely need to query deleted records, use `db.Unscoped()`:
+  ```go
+  db.WithContext(ctx).Unscoped().Where("id = ?", id).First(&user)
+  ```
+- Do not mix soft-delete and hard-delete patterns on the same table.
+
+### Indexes & Constraints
+
+- Declare indexes and constraints in GORM struct tags so that schema tooling and migration generators can reflect them:
+  ```go
+  type Order struct {
+    ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
+    UserID    uuid.UUID `gorm:"not null;index"`
+    Status    string    `gorm:"not null;index:idx_orders_status_created,priority:1"`
+    CreatedAt time.Time `gorm:"index:idx_orders_status_created,priority:2"`
+  }
+  ```
+- Always add an index on foreign-key columns.
+- Prefer partial indexes in raw SQL migrations for sparse or enum-like columns to reduce index size.
+- Review the `EXPLAIN ANALYZE` output for any query that scans large tables; ensure the query plan uses an index seek, not a sequential scan.
