@@ -20,6 +20,8 @@ repo root/
     ├── copilot-instructions.md      # GitHub Copilot instructions
     ├── init-labels.sh               # Script to create standard GitHub issue labels
     ├── labeler.yml                  # Label-to-file-pattern mappings for the labeler workflow
+    ├── release.yaml                 # Release drafter configuration
+    ├── PULL_REQUEST_TEMPLATE.md     # Default pull request template
     └── workflows/
         └── labeler.yml              # GitHub Actions workflow to auto-label pull requests
 ```
@@ -83,7 +85,7 @@ This creates the following labels:
 
 The repository includes a GitHub Actions workflow that automatically applies labels to pull requests based on the files changed.
 
-The workflow is defined in `.github/workflows/labeler.yml` and uses the mapping in `.github/labeler.yml`. Labels are applied according to the following rules:
+The workflow is defined in `.github/workflows/labeler.yml` and uses the mapping in `.github/labeler.yml`. Labels are applied according to the following example rules (customise the paths to match your project):
 
 | Label | Branch pattern | Changed files |
 |---|---|---|
@@ -98,6 +100,8 @@ The workflow is defined in `.github/workflows/labeler.yml` and uses the mapping 
 | `dependencies` | — | `src/go.mod`, `src/go.sum` |
 | `migration/database` | — | `src/migrations/**/*` |
 | `api` | — | `api/**/*`, `openapi.yaml` |
+
+> The file patterns above are templates; update them to match the directories and files in your repository.
 
 The workflow triggers on `pull_request_target` events (opened, synchronized, or re-opened) and requires no additional configuration beyond the labels being present in the repository — run `init-labels.sh` first if you haven't already.
 
