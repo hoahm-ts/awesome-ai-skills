@@ -1,20 +1,44 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Project: awesome-ai-skills
+  Description: A curated collection of configuration files, instructions, and best practices for working with AI coding agents.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Tech stack:
+    - Language: Go 1.24+
+    - HTTP framework: chi
+    - Database: PostgreSQL (GORM ORM)
+    - Cache: Redis
+    - Messaging: Kafka
+    - Workflow engine: Temporal
+    - Tracing & Observability: Datadog (OpenTelemetry)
+    - Dependency injection: Google Wire
+    - Logging: zerolog
+
+  Conventions:
+    - Conventional Commits format (feat:, fix:, docs:, chore:, refactor:)
+    - Branch format: <type>/<ticket> (e.g. feat/JIRA-1)
+    - PR title format: <TICKET_NUMBER>: <description>
+    - Uber Go Style Guide for all Go code
+    - Modular architecture with explicit dependency injection (one composition root)
+    - Repository pattern for all database access
+    - Interfaces/ports at module boundaries
+
+  Canonical references:
+    - AGENTS.md — unified instructions for all agents and contributors
+    - CLAUDE.md — Claude-specific instructions
+    - .github/copilot-instructions.md — GitHub Copilot instructions
+
+rules:
+  proposal:
+    - Keep proposals concise and focused on a single capability
+    - Always include a "Non-goals" section to define scope boundaries
+    - Reference the impacted domain modules and entry points
+  tasks:
+    - Break tasks into chunks of max 2 hours each
+    - Each task must include clear acceptance criteria
+    - Prefix tasks with the affected layer (handler, domain, infra, wiring)
+  spec:
+    - Follow the architecture layers defined in AGENTS.md
+    - Domain logic must remain free of transport concerns
+    - All cross-domain interactions must go through defined interfaces/ports
