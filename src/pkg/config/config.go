@@ -21,10 +21,14 @@ type Config struct {
 
 // AppConfig holds HTTP server and general application settings.
 type AppConfig struct {
-	Name    string
-	Env     string
-	Port    int
-	Timeout time.Duration
+	Name            string
+	Env             string
+	Port            int
+	Timeout         time.Duration
+	ReadTimeout     time.Duration
+	WriteTimeout    time.Duration
+	IdleTimeout     time.Duration
+	ShutdownTimeout time.Duration
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
@@ -67,10 +71,14 @@ type DatadogConfig struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		App: AppConfig{
-			Name:    getEnv("APP_NAME", "awesome-ai-skills"),
-			Env:     getEnv("APP_ENV", "development"),
-			Port:    getEnvInt("APP_PORT", 8080),
-			Timeout: 30 * time.Second,
+			Name:            getEnv("APP_NAME", "awesome-ai-skills"),
+			Env:             getEnv("APP_ENV", "development"),
+			Port:            getEnvInt("APP_PORT", 8080),
+			Timeout:         getEnvDuration("APP_TIMEOUT_SECONDS", 30),
+			ReadTimeout:     getEnvDuration("APP_READ_TIMEOUT_SECONDS", 15),
+			WriteTimeout:    getEnvDuration("APP_WRITE_TIMEOUT_SECONDS", 15),
+			IdleTimeout:     getEnvDuration("APP_IDLE_TIMEOUT_SECONDS", 60),
+			ShutdownTimeout: getEnvDuration("APP_SHUTDOWN_TIMEOUT_SECONDS", 30),
 		},
 		Database: DatabaseConfig{
 			DSN:          getEnv("DATABASE_DSN", ""),
@@ -122,4 +130,9 @@ func getEnvInt(key string, defaultValue int) int {
 		return defaultValue
 	}
 	return n
+}
+
+// getEnvDuration reads an env var as an integer number of seconds and returns a time.Duration.
+func getEnvDuration(key string, defaultSeconds int) time.Duration {
+	return time.Duration(getEnvInt(key, defaultSeconds)) * time.Second
 }

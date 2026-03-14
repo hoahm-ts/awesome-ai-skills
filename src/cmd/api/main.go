@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
@@ -18,13 +17,6 @@ import (
 	"github.com/hoahm-ts/awesome-ai-skills/pkg/config"
 	"github.com/hoahm-ts/awesome-ai-skills/pkg/logger"
 	appMiddleware "github.com/hoahm-ts/awesome-ai-skills/pkg/middleware"
-)
-
-const (
-	_readTimeout     = 15 * time.Second
-	_writeTimeout    = 15 * time.Second
-	_idleTimeout     = 60 * time.Second
-	_shutdownTimeout = 30 * time.Second
 )
 
 func main() {
@@ -52,9 +44,9 @@ func run() error {
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.App.Port),
 		Handler:      r,
-		ReadTimeout:  _readTimeout,
-		WriteTimeout: _writeTimeout,
-		IdleTimeout:  _idleTimeout,
+		ReadTimeout:  cfg.App.ReadTimeout,
+		WriteTimeout: cfg.App.WriteTimeout,
+		IdleTimeout:  cfg.App.IdleTimeout,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -70,7 +62,7 @@ func run() error {
 	<-ctx.Done()
 	log.Info().Msg("shutting down api server")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), _shutdownTimeout)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.App.ShutdownTimeout)
 	defer cancel()
 
 	return srv.Shutdown(shutdownCtx)
