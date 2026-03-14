@@ -156,6 +156,20 @@ When adding or altering a capability:
 
 ---
 
+## Git Workflow & Branching Rules
+
+Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No description suffix. Examples: `spec/JIRA-1`, `feat/JIRA-1`, `fix/JIRA-1`.
+
+---
+
+## Pull Request Guidelines
+
+**Title format:** `<TICKET_NUMBER>: <description>` — e.g. `JIRA-29: init the project structure`
+
+**Description:** Always follow [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md). Fill in all fields.
+
+---
+
 ## AI Agent Behaviour
 
 ### Always do first
