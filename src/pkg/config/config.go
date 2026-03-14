@@ -24,6 +24,7 @@ type AppConfig struct {
 	Name            string
 	Env             string
 	Port            int
+	LogLevel        string
 	Timeout         time.Duration
 	ReadTimeout     time.Duration
 	WriteTimeout    time.Duration
@@ -74,6 +75,7 @@ func Load() (*Config, error) {
 			Name:            getEnv("APP_NAME", "awesome-ai-skills"),
 			Env:             getEnv("APP_ENV", "development"),
 			Port:            getEnvInt("APP_PORT", 8080),
+			LogLevel:        getEnv("APP_LOG_LEVEL", "info"),
 			Timeout:         getEnvDuration("APP_TIMEOUT_SECONDS", 30),
 			ReadTimeout:     getEnvDuration("APP_READ_TIMEOUT_SECONDS", 15),
 			WriteTimeout:    getEnvDuration("APP_WRITE_TIMEOUT_SECONDS", 15),

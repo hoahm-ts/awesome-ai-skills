@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/rs/zerolog"
 
 	"github.com/hoahm-ts/awesome-ai-skills/internal/handler"
 	"github.com/hoahm-ts/awesome-ai-skills/pkg/config"
@@ -32,7 +31,7 @@ func run() error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	log := logger.New(cfg.App.Name, cfg.App.Env, zerolog.InfoLevel)
+	log := logger.New(cfg.Datadog.ServiceName, cfg.App.Env, logger.LevelFromString(cfg.App.LogLevel))
 
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.Recoverer)
