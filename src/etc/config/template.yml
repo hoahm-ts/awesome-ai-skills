@@ -3,6 +3,7 @@ app:
   env: {{default "development" .Env.APP_ENV}}
   port: {{default "8080" .Env.APP_PORT}}
   log_level: {{default "info" .Env.LOG_LEVEL}}
+  timeout_seconds: {{default "30" .Env.APP_TIMEOUT_SECONDS}}
   read_timeout_seconds: {{default "15" .Env.APP_READ_TIMEOUT_SECONDS}}
   write_timeout_seconds: {{default "15" .Env.APP_WRITE_TIMEOUT_SECONDS}}
   idle_timeout_seconds: {{default "60" .Env.APP_IDLE_TIMEOUT_SECONDS}}
@@ -29,7 +30,8 @@ redis:
   password: {{default "" .Env.REDIS_PASSWORD}}
 
 kafka:
-  broker: {{default "localhost:9092" .Env.KAFKA_BROKER}}
+  brokers:
+    - {{default "localhost:9092" .Env.KAFKA_BROKER}}
   group_id: {{default "awesome-ai-skills" .Env.KAFKA_GROUP_ID}}
 
 temporal:

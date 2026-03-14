@@ -7,6 +7,7 @@ app:
   env: development
   port: 8080
   log_level: info
+  timeout_seconds: 30
   read_timeout_seconds: 15
   write_timeout_seconds: 15
   idle_timeout_seconds: 60
@@ -29,7 +30,8 @@ redis:
   password: ""
 
 kafka:
-  broker: localhost:9092
+  brokers:
+    - localhost:9092
   group_id: awesome-ai-skills
 
 temporal:
