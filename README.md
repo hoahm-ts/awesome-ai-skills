@@ -27,6 +27,9 @@ repo root/
 ├── CODEX.md                         # Codex/ChatGPT-specific coding instructions
 ├── JUNIE.md                         # Junie (JetBrains AI) specific instructions
 ├── .cursorrules                     # Cursor AI editor rules
+├── docs/
+│   └── architectures/
+│       └── architecture.md          # High-level system architecture overview
 ├── .claude/
 │   ├── settings.json                # Claude project settings
 │   ├── hooks/                       # Claude lifecycle hooks
