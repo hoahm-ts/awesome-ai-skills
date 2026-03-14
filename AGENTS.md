@@ -179,6 +179,50 @@ Standard field names to use consistently across the service:
 | `error` | `string` | Error message (use `.Err(err)`) |
 | `duration_ms` | `int64` | Elapsed time for an operation |
 
+#### HTTP request logging patterns
+
+Use consistent structured fields when logging HTTP traffic so that log queries and dashboards work uniformly across services.
+
+The `marker` field is a fixed string tag that identifies the log category (`[api]` for inbound, `[request]` for outbound). It enables fast log filtering (e.g. `marker:[api]` in DataDog) without full-text search.
+
+**Incoming API requests** (server-side middleware)
+
+Log at `Info` level after the handler returns. Read the request ID from the `X-Request-ID` header.
+
+```go
+requestID := request.Header.Get("X-Request-ID")
+zerolog.Ctx(ctx).Info().
+    Str("marker", "[api]").
+    Str("method", request.Method).
+    Str("upstream_host", request.URL.Host).
+    Str("path", request.URL.Path).
+    Int("status_code", statusCode).
+    Int64("duration_ns", runTime.Nanoseconds()).
+    Dur("duration", runTime).
+    Str("request_id", requestID).
+    Msg("api request")
+```
+
+**Outbound requests** (HTTP client middleware / transport wrapper)
+
+Log at `Info` level after the response is received. Read the request ID from the context when available.
+
+```go
+// requestIDKey is the context key used to store and retrieve the request ID.
+// Define it once per package: type contextKey string; const requestIDKey contextKey = "request_id"
+requestID, _ := ctx.Value(requestIDKey).(string)
+zerolog.Ctx(ctx).Info().
+    Str("marker", "[request]").
+    Str("method", request.Method).
+    Int("status_code", res.StatusCode).
+    Str("upstream_host", request.URL.Host).
+    Str("path", request.URL.Path).
+    Int64("duration_ns", runTime.Nanoseconds()).
+    Dur("duration", runTime).
+    Str("request_id", requestID).
+    Msg("outbound request")
+```
+
 #### Logger propagation via context
 
 Attach the logger to `context.Context` at entry points so downstream functions receive it automatically.
