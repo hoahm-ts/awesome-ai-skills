@@ -38,6 +38,7 @@ jobs:
         with:
           version: latest
           working-directory: src
+          go-version-file: src/go.mod
 
   test:
     name: Test
