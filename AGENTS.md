@@ -641,6 +641,10 @@ Choose a retry pattern based on the nature of the operation and the acceptable f
 | **Retry with compensation** | Retries are exhausted and a partial side effect must be rolled back (saga pattern) | `MaximumAttempts > 1` + a compensation Activity in the failure path |
 | **Heartbeat-based resume** | Long-running operations that can checkpoint progress and resume from the last known state instead of restarting from scratch | `HeartbeatTimeout` set, checkpoint stored in heartbeat details |
 | **Manual retry via signal** | Human approval or intervention is required before a retry (e.g. fraud review, operator gate) | `MaximumAttempts: 1`, workflow waits for a signal before re-executing |
+| **Polling with delay** | External resource is not yet ready and must be re-checked after a fixed wait (e.g. async job status, eventual-consistency read) | `workflow.Sleep` between attempts inside the workflow loop |
+| **Custom retry logic in Activity** | Built-in retry policy is too coarse; different error types need different back-off or fallback strategies | Manual loop with typed error inspection inside the Activity |
+
+> **Tip:** See [temporalio/samples-go](https://github.com/temporalio/samples-go) for runnable examples of these and other patterns in Go.
 
 #### Standard Retry
 
@@ -803,6 +807,99 @@ func OrderWorkflow(ctx workflow.Context, order Order) error {
     return nil
 }
 ```
+
+#### Polling with Delay
+
+Use when an external resource transitions through states asynchronously and the workflow must wait until a condition is met (e.g. a batch job completes, a record becomes consistent). Poll inside the workflow using `workflow.Sleep` so Temporal's deterministic clock is respected and the wait is durable across worker restarts.
+
+```go
+// Use case: wait for an async export job to finish before proceeding.
+func ExportWorkflow(ctx workflow.Context, jobID string) error {
+    ao := workflow.ActivityOptions{
+        StartToCloseTimeout: 10 * time.Second,
+        RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 3},
+    }
+    ctx = workflow.WithActivityOptions(ctx, ao)
+
+    const (
+        _maxPolls    = 20
+        _pollInterval = 15 * time.Second
+    )
+    for i := 0; i < _maxPolls; i++ {
+        var done bool
+        if err := workflow.ExecuteActivity(ctx, CheckExportStatusActivity, jobID).Get(ctx, &done); err != nil {
+            return fmt.Errorf("check export status: %w", err)
+        }
+        if done {
+            return nil
+        }
+        // Sleep deterministically — never use time.Sleep inside a workflow.
+        if err := workflow.Sleep(ctx, _pollInterval); err != nil {
+            return err // workflow was cancelled
+        }
+    }
+    return temporal.NewNonRetryableApplicationError("export job timed out", "ExportTimeout", nil)
+}
+```
+
+#### Custom Retry Logic in Activity
+
+Use when the built-in retry policy applies the same back-off to every error, but different error types need different treatment — for example, throttling errors should back off longer while transient network errors should retry immediately. Implement a manual retry loop inside the Activity and classify errors explicitly.
+
+```go
+// Use case: calling a third-party API that returns both throttle errors (need longer back-off)
+// and transient errors (can retry quickly).
+func CallExternalAPIActivity(ctx context.Context, req Request) (*Response, error) {
+    const _maxAttempts = 5
+    backoff := time.Second
+
+    for attempt := 1; attempt <= _maxAttempts; attempt++ {
+        resp, err := externalClient.Call(ctx, req)
+        if err == nil {
+            return resp, nil
+        }
+
+        var throttleErr *ThrottleError
+        var networkErr *NetworkError
+        switch {
+        case errors.As(err, &throttleErr):
+            // Throttle errors require a longer wait; honour the Retry-After hint if available.
+            wait := throttleErr.RetryAfter
+            if wait == 0 {
+                wait = 30 * time.Second
+            }
+            activity.RecordHeartbeat(ctx, fmt.Sprintf("throttled, waiting %s", wait))
+            select {
+            case <-ctx.Done():
+                return nil, ctx.Err()
+            case <-time.After(wait):
+            }
+        case errors.As(err, &networkErr):
+            // Network errors retry quickly with exponential back-off.
+            activity.RecordHeartbeat(ctx, fmt.Sprintf("network error attempt %d", attempt))
+            select {
+            case <-ctx.Done():
+                return nil, ctx.Err()
+            case <-time.After(backoff):
+            }
+            backoff *= 2
+            if backoff > 30*time.Second {
+                backoff = 30 * time.Second
+            }
+        default:
+            // Unknown error — non-retryable.
+            return nil, temporal.NewNonRetryableApplicationError(
+                "unexpected API error",
+                "UnexpectedAPIError",
+                err,
+            )
+        }
+    }
+    return nil, fmt.Errorf("external API call failed after %d attempts", _maxAttempts)
+}
+```
+
+> **Note:** Disable Temporal's built-in retry when using a manual loop (`MaximumAttempts: 1`) to avoid double-retrying on the same error.
 
 ### ContinueAsNew
 
