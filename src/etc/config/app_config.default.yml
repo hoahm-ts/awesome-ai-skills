@@ -1,6 +1,6 @@
 app:
   name: awesome-ai-skills
-  env: production
+  env: development
   port: 8080
   log_level: info
   read_timeout_seconds: 15
@@ -26,5 +26,5 @@ temporal:
 
 datadog:
   service: awesome-ai-skills
-  env: production
+  env: development
   agent_host: localhost

@@ -102,7 +102,7 @@ func Load() (*Config, error) {
 			TaskQueue: getEnv("TEMPORAL_TASK_QUEUE", "default"),
 		},
 		Datadog: DatadogConfig{
-			ServiceName: getEnv("DD_SERVICE", "awesome-ai-skills"),
+			ServiceName: getEnv("APP_NAME", "awesome-ai-skills"),
 			Env:         getEnv("DD_ENV", "development"),
 			AgentHost:   getEnv("DD_AGENT_HOST", "localhost"),
 		},

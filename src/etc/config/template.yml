@@ -1,6 +1,6 @@
 app:
   name: {{default "awesome-ai-skills" .Env.APP_NAME}}
-  env: {{default "production" .Env.APP_ENV}}
+  env: {{default "development" .Env.APP_ENV}}
   port: {{default "8080" .Env.APP_PORT}}
   log_level: {{default "info" .Env.APP_LOG_LEVEL}}
   read_timeout_seconds: {{default "15" .Env.APP_READ_TIMEOUT_SECONDS}}
@@ -25,6 +25,6 @@ temporal:
   task_queue: {{default "default" .Env.TEMPORAL_TASK_QUEUE}}
 
 datadog:
-  service: {{default "awesome-ai-skills" .Env.DD_SERVICE}}
-  env: {{default "production" .Env.DD_ENV}}
+  service: {{default "awesome-ai-skills" .Env.APP_NAME}}
+  env: {{default "development" .Env.DD_ENV}}
   agent_host: {{default "localhost" .Env.DD_AGENT_HOST}}

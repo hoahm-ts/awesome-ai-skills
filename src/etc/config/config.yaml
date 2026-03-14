@@ -23,7 +23,6 @@ TEMPORAL_HOST_PORT=localhost:7233
 TEMPORAL_NAMESPACE=default
 TEMPORAL_TASK_QUEUE=default
 
-# Datadog
-DD_SERVICE=awesome-ai-skills
+# Datadog (DD_SERVICE is not used; datadog.service reads from APP_NAME above)
 DD_ENV=development
 DD_AGENT_HOST=localhost
