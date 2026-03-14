@@ -1,0 +1,32 @@
+docs:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.md'
+      - 'LICENSE'
+
+chore:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.gitignore'
+      - '.github/init-labels.sh'
+      - '.github/workflows/**'
+      - '.github/labeler.yml'
+      - '.github/ISSUE_TEMPLATE/**'
+
+feature:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'AGENTS.md'
+      - 'CLAUDE.md'
+      - 'CODEX.md'
+      - 'JUNIE.md'
+      - '.cursorrules'
+      - '.claude/**'
+      - '.github/copilot-instructions.md'
+
+security:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'SECURITY.md'
+      - '.github/security/**'
+      - 'docs/security/**'
