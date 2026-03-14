@@ -1,0 +1,30 @@
+app:
+  name: {{ .Env.APP_NAME }}
+  env: {{ .Env.APP_ENV }}
+  port: {{ .Env.APP_PORT }}
+  log_level: {{ .Env.APP_LOG_LEVEL }}
+  read_timeout_seconds: {{ .Env.APP_READ_TIMEOUT_SECONDS }}
+  write_timeout_seconds: {{ .Env.APP_WRITE_TIMEOUT_SECONDS }}
+  idle_timeout_seconds: {{ .Env.APP_IDLE_TIMEOUT_SECONDS }}
+  shutdown_timeout_seconds: {{ .Env.APP_SHUTDOWN_TIMEOUT_SECONDS }}
+
+database:
+  dsn: {{ .Env.DATABASE_DSN }}
+
+redis:
+  addr: {{ .Env.REDIS_ADDR }}
+  password: {{ .Env.REDIS_PASSWORD }}
+
+kafka:
+  broker: {{ .Env.KAFKA_BROKER }}
+  group_id: {{ .Env.KAFKA_GROUP_ID }}
+
+temporal:
+  host_port: {{ .Env.TEMPORAL_HOST_PORT }}
+  namespace: {{ .Env.TEMPORAL_NAMESPACE }}
+  task_queue: {{ .Env.TEMPORAL_TASK_QUEUE }}
+
+datadog:
+  service: {{ .Env.DD_SERVICE }}
+  env: {{ .Env.DD_ENV }}
+  agent_host: {{ .Env.DD_AGENT_HOST }}
