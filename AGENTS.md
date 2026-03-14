@@ -630,6 +630,180 @@ singleShotAO := workflow.ActivityOptions{
 }
 ```
 
+### Activity Retry Patterns
+
+Choose a retry pattern based on the nature of the operation and the acceptable failure mode.
+
+| Pattern | When to use | Key config |
+|---|---|---|
+| **Standard retry** | Transient failures on idempotent calls (HTTP timeouts, rate limits, temporary unavailability) | `MaximumAttempts > 1`, exponential backoff |
+| **Single-shot (no retry)** | Non-idempotent operations where a duplicate execution causes harm (e.g. charge a card, send an SMS) | `MaximumAttempts: 1`, strong alerting |
+| **Retry with compensation** | Retries are exhausted and a partial side effect must be rolled back (saga pattern) | `MaximumAttempts > 1` + a compensation Activity in the failure path |
+| **Heartbeat-based resume** | Long-running operations that can checkpoint progress and resume from the last known state instead of restarting from scratch | `HeartbeatTimeout` set, checkpoint stored in heartbeat details |
+| **Manual retry via signal** | Human approval or intervention is required before a retry (e.g. fraud review, operator gate) | `MaximumAttempts: 1`, workflow waits for a signal before re-executing |
+
+#### Standard Retry
+
+Use for any idempotent call that may experience transient failures. Temporal retries the Activity automatically using the configured policy.
+
+```go
+// Use case: calling an internal inventory service that may be temporarily overloaded.
+ao := workflow.ActivityOptions{
+    StartToCloseTimeout:    10 * time.Second,
+    ScheduleToCloseTimeout: 2 * time.Minute,
+    RetryPolicy: &temporal.RetryPolicy{
+        InitialInterval:        time.Second,
+        BackoffCoefficient:     2.0,
+        MaximumInterval:        30 * time.Second,
+        MaximumAttempts:        5,
+        NonRetryableErrorTypes: []string{"ItemNotFound"},
+    },
+}
+ctx = workflow.WithActivityOptions(ctx, ao)
+if err := workflow.ExecuteActivity(ctx, ReserveInventoryActivity, orderID).Get(ctx, nil); err != nil {
+    return fmt.Errorf("reserve inventory: %w", err)
+}
+```
+
+#### Single-Shot (No Retry)
+
+Use for non-idempotent operations. Duplicate execution would cause real harm (double charge, duplicate notification). Pair with strong alerting so failures surface immediately.
+
+```go
+// Use case: charging a customer's payment method — must never execute twice.
+ao := workflow.ActivityOptions{
+    StartToCloseTimeout: 30 * time.Second,
+    RetryPolicy: &temporal.RetryPolicy{
+        MaximumAttempts: 1, // no retries
+    },
+}
+ctx = workflow.WithActivityOptions(ctx, ao)
+if err := workflow.ExecuteActivity(ctx, ChargePaymentActivity, order).Get(ctx, nil); err != nil {
+    // Handle the failure explicitly — do not silently swallow it.
+    return fmt.Errorf("charge payment: %w", err)
+}
+```
+
+#### Retry with Compensation (Saga)
+
+Use when retries are exhausted and partial state must be rolled back. Execute a compensation Activity to undo any side effects committed before the failure.
+
+```go
+// Use case: reserve inventory then charge payment; roll back the reservation if payment fails.
+reserveCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+    StartToCloseTimeout: 10 * time.Second,
+    RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 3},
+})
+if err := workflow.ExecuteActivity(reserveCtx, ReserveInventoryActivity, orderID).Get(ctx, nil); err != nil {
+    return fmt.Errorf("reserve inventory: %w", err)
+}
+
+chargeCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+    StartToCloseTimeout: 30 * time.Second,
+    RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+})
+if err := workflow.ExecuteActivity(chargeCtx, ChargePaymentActivity, order).Get(ctx, nil); err != nil {
+    // Compensate: release the reservation that was already committed.
+    compensateCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+        StartToCloseTimeout: 10 * time.Second,
+        RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 5},
+    })
+    _ = workflow.ExecuteActivity(compensateCtx, ReleaseInventoryActivity, orderID).Get(ctx, nil)
+    return fmt.Errorf("charge payment: %w", err)
+}
+```
+
+#### Heartbeat-Based Resume
+
+Use for long-running Activities (file processing, batch jobs) that can record checkpoints. On retry, resume from the last checkpoint instead of restarting from scratch.
+
+```go
+// Use case: processing a large file page by page; resume from the last committed page on retry.
+func ProcessFileActivity(ctx context.Context, fileID string) error {
+    // Recover the last checkpoint from a previous attempt, if any.
+    startPage := 0
+    if details := activity.GetInfo(ctx).HeartbeatDetails; details != nil {
+        _ = converter.GetDefaultDataConverter().FromPayloads(details, &startPage)
+    }
+
+    for page := startPage; ; page++ {
+        if err := ctx.Err(); err != nil {
+            return err // respect cancellation / timeout
+        }
+        done, err := processPage(ctx, fileID, page)
+        if err != nil {
+            return err
+        }
+        // Checkpoint progress so the next attempt can resume here.
+        activity.RecordHeartbeat(ctx, page+1)
+        if done {
+            return nil
+        }
+    }
+}
+
+// Activity options: heartbeat timeout shorter than the per-page processing time.
+ao := workflow.ActivityOptions{
+    StartToCloseTimeout:    30 * time.Minute,
+    ScheduleToCloseTimeout: 2 * time.Hour,
+    HeartbeatTimeout:       30 * time.Second,
+    RetryPolicy: &temporal.RetryPolicy{
+        InitialInterval:    5 * time.Second,
+        BackoffCoefficient: 2.0,
+        MaximumInterval:    60 * time.Second,
+        MaximumAttempts:    10,
+    },
+}
+```
+
+#### Manual Retry via Signal
+
+Use when a human or external system must review a failure before the operation is retried. The workflow pauses and waits for an approval signal rather than retrying automatically.
+
+```go
+const (
+    _signalRetryApproved = "retry-approved"
+    _signalRetryAborted  = "retry-aborted"
+)
+
+// Use case: a fraud-check Activity failed; a human must approve before retrying.
+func OrderWorkflow(ctx workflow.Context, order Order) error {
+    ao := workflow.ActivityOptions{
+        StartToCloseTimeout: 10 * time.Second,
+        RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 1},
+    }
+    ctx = workflow.WithActivityOptions(ctx, ao)
+
+    if err := workflow.ExecuteActivity(ctx, FraudCheckActivity, order).Get(ctx, nil); err != nil {
+        // Notify an operator and wait for a manual decision.
+        _ = workflow.ExecuteActivity(ctx, NotifyOperatorActivity, order.ID, err.Error()).Get(ctx, nil)
+
+        approvedCh := workflow.GetSignalChannel(ctx, _signalRetryApproved)
+        abortedCh := workflow.GetSignalChannel(ctx, _signalRetryAborted)
+
+        sel := workflow.NewSelector(ctx)
+        var approved bool
+        sel.AddReceive(approvedCh, func(c workflow.ReceiveChannel, _ bool) {
+            c.Receive(ctx, nil)
+            approved = true
+        })
+        sel.AddReceive(abortedCh, func(c workflow.ReceiveChannel, _ bool) {
+            c.Receive(ctx, nil)
+        })
+        sel.Select(ctx)
+
+        if !approved {
+            return temporal.NewNonRetryableApplicationError("fraud check aborted by operator", "FraudCheckAborted", nil)
+        }
+        // Retry once after approval.
+        if err := workflow.ExecuteActivity(ctx, FraudCheckActivity, order).Get(ctx, nil); err != nil {
+            return fmt.Errorf("fraud check after approval: %w", err)
+        }
+    }
+    return nil
+}
+```
+
 ### ContinueAsNew
 
 Use `workflow.NewContinueAsNewError` to restart a workflow with fresh history when it processes unbounded event streams or long-running loops. This prevents history size from growing indefinitely.
