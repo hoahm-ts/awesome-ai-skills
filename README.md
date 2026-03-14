@@ -85,12 +85,19 @@ The repository includes a GitHub Actions workflow that automatically applies lab
 
 The workflow is defined in `.github/workflows/labeler.yml` and uses the mapping in `.github/labeler.yml`. Labels are applied according to the following rules:
 
-| Label | Triggered by changes to |
-|---|---|
-| `docs` | `*.md` files, `LICENSE` |
-| `chore` | `.gitignore`, scripts, workflow files, issue templates |
-| `feature` | AI agent configuration files (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.claude/`, etc.) |
-| `security` | `SECURITY.md`, `.github/security/**`, `docs/security/**` |
+| Label | Branch pattern | Changed files |
+|---|---|---|
+| `chore` | `chore/*` | — |
+| `feature` | `feat/*` | — |
+| `spec` | `spec/*` | `openspec/**/*` (excluding archive) |
+| `spec-archive` | — | `openspec/changes/archive/**/*` |
+| `fix` | `fix/*`, `hotfix/*` | — |
+| `docs` | `docs/*` | `docs/**/*` |
+| `refactor` | `refactor/*` | — |
+| `test` | `test/*` | — |
+| `dependencies` | — | `src/go.mod`, `src/go.sum` |
+| `migration/database` | — | `src/migrations/**/*` |
+| `api` | — | `api/**/*`, `openapi.yaml` |
 
 The workflow triggers on `pull_request_target` events (opened, synchronized, or re-opened) and requires no additional configuration beyond the labels being present in the repository — run `init-labels.sh` first if you haven't already.
 
