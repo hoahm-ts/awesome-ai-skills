@@ -22,7 +22,8 @@ repo root/
 ├── JUNIE.md                         # Junie (JetBrains AI) specific instructions
 ├── .cursorrules                     # Cursor AI editor rules
 ├── docs/                            # Architecture and design documentation
-│   ├── architecture.md
+│   └── architectures/
+│       └── architecture.md          # High-level system architecture overview
 │   └── repository-initialisation.md # Step-by-step guide to initialise a new repository
 ├── openspec/                        # Spec-driven workflow artifacts
 │   └── config.yaml
