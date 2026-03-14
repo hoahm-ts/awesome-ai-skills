@@ -22,8 +22,8 @@
 ## How did you test it?
 <!-- How have you verified this change? Tested locally? Added a unit test? Checked in staging env? -->
 
-Potential risks
+## Potential risks
 <!-- Assuming the worst case, what can be broken when deploying this change to production? -->
 
-Is hotfix candidate?
+## Is hotfix candidate?
 <!-- Is this PR a hotfix candidate or require that a notification be sent to the broader community? (Yes/No) -->
