@@ -256,6 +256,43 @@ domain        ➜  shared ports/types + infrastructure abstractions
 - **Handler/command logic**: prefer table-driven tests for input validation and response mapping; use fakes or mocks for domain services via interfaces.
 - **Integration adapters**: unit-test adapters with mocked HTTP/SDK responses. Do not call real external services in automated tests.
 - Avoid flaky tests; tests must be deterministic and independent of external state.
+- **Parallel execution**: mark independent unit tests with `t.Parallel()` so the test suite runs as fast as possible. Sub-tests inside a table-driven test should also call `t.Parallel()` where safe:
+  ```go
+  func TestFoo(t *testing.T) {
+    t.Parallel()
+    tests := []struct{ ... }{ ... }
+    for _, tt := range tests {
+      tt := tt // capture range variable
+      t.Run(tt.name, func(t *testing.T) {
+        t.Parallel()
+        // ...
+      })
+    }
+  }
+  ```
+- **High coverage**: generated tests must cover all meaningful code paths. Focus on high-risk areas and edge cases (boundary values, error paths, concurrent access, nil/empty inputs) rather than chasing an arbitrary percentage such as 100 %. A well-chosen set of targeted tests is more valuable than exhaustive but shallow ones.
+- **Readability and maintainability**: AI-generated tests must be clean and structured, resembling human-written code. Use descriptive test names (`TestOrderService_CreateOrder_ReturnsErrNotFound`), keep each test case focused on a single behaviour, and avoid complex conditional logic or branching inside the test body — split into separate `Test...` functions instead.
+- **Table-driven testing**: use table-driven tests with `t.Run` subtests whenever multiple inputs exercise the same logic. Name the slice `tests` and each entry `tt`. Use `give`/`want` prefixes for input/output fields:
+  ```go
+  tests := []struct {
+    name    string
+    give    Input
+    want    Output
+    wantErr error
+  }{
+    {name: "valid input", give: ..., want: ..., wantErr: nil},
+    {name: "empty name returns error", give: ..., want: ..., wantErr: ErrInvalidInput},
+  }
+  for _, tt := range tests {
+    tt := tt
+    t.Run(tt.name, func(t *testing.T) {
+      t.Parallel()
+      got, err := MyFunc(tt.give)
+      require.ErrorIs(t, err, tt.wantErr)
+      require.Equal(t, tt.want, got)
+    })
+  }
+  ```
 
 ---
 
