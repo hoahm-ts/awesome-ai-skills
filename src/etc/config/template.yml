@@ -24,6 +24,9 @@ database:
   ssl_cert: {{default "" .Env.DB_SSL_CERT}}
   ssl_key: {{default "" .Env.DB_SSL_KEY}}
   ssl_root_cert: {{default "" .Env.DB_SSL_ROOT_CERT}}
+  max_open_conns: {{default "25" .Env.DB_MAX_OPEN_CONNS}}
+  max_idle_conns: {{default "5" .Env.DB_MAX_IDLE_CONNS}}
+  max_lifetime_seconds: {{default "300" .Env.DB_MAX_LIFETIME_SECONDS}}
 
 redis:
   addr: {{default "localhost:6379" .Env.REDIS_ADDR}}

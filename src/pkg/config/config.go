@@ -63,10 +63,11 @@ type DatabaseConfig struct {
 	SSLKey      string `yaml:"ssl_key"`       // path to client private key (mutual TLS)
 	SSLRootCert string `yaml:"ssl_root_cert"` // path to root CA cert (verify-ca / verify-full)
 
-	// Connection pool settings (not loaded from YAML).
-	MaxOpenConns int           `yaml:"-"`
-	MaxIdleConns int           `yaml:"-"`
-	MaxLifetime  time.Duration `yaml:"-"`
+	// Connection pool settings. Zero values trigger defaults in LoadFromFile.
+	MaxOpenConns       int           `yaml:"max_open_conns"`
+	MaxIdleConns       int           `yaml:"max_idle_conns"`
+	MaxLifetimeSeconds int           `yaml:"max_lifetime_seconds"`
+	MaxLifetime        time.Duration `yaml:"-"` // derived from MaxLifetimeSeconds after loading
 }
 
 // EffectiveDSN returns the DSN to use for opening the database connection.
@@ -124,12 +125,12 @@ type DatadogConfig struct {
 func Load() (*Config, error) {
 	path := os.Getenv("CONFIG_PATH")
 	if path == "" {
-		path = "etc/config/app_config.yml"
+		path = "etc/config/app_config.default.yml"
 	}
 	return LoadFromFile(path)
 }
 
-// Default values for database connection-pool settings not represented in the YAML file.
+// Default values for database connection-pool settings when omitted from the YAML file.
 const (
 	defaultMaxOpenConns       = 25
 	defaultMaxIdleConns       = 5
@@ -142,7 +143,7 @@ const (
 func LoadFromFile(path string) (*Config, error) {
 	cfg, err := pkgyaml.ParseFile[Config](path)
 	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
+		return nil, err
 	}
 
 	// Derive time.Duration fields from the raw integer-seconds values.
@@ -159,12 +160,18 @@ func LoadFromFile(path string) (*Config, error) {
 	if cfg.Database.MaxIdleConns == 0 {
 		cfg.Database.MaxIdleConns = defaultMaxIdleConns
 	}
-	if cfg.Database.MaxLifetime == 0 {
-		cfg.Database.MaxLifetime = defaultMaxLifetimeSeconds * time.Second
+	if cfg.Database.MaxLifetimeSeconds == 0 {
+		cfg.Database.MaxLifetimeSeconds = defaultMaxLifetimeSeconds
 	}
+	cfg.Database.MaxLifetime = time.Duration(cfg.Database.MaxLifetimeSeconds) * time.Second
 
 	if err := validate(cfg); err != nil {
 		return nil, err
+	}
+
+	// Normalise: ensure DSN is always set so consumers can use cfg.Database.DSN directly.
+	if cfg.Database.DSN == "" {
+		cfg.Database.DSN = cfg.Database.EffectiveDSN()
 	}
 
 	return cfg, nil
