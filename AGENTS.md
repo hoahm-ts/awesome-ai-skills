@@ -396,3 +396,264 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
 
 - **Test tables**: use table-driven tests with `t.Run` subtests for repeated logic. Name the slice `tests` and each case `tt`. Use `give` / `want` prefixes for input/output fields. Avoid complex conditional logic or branching inside table test loops — split into separate `Test...` functions instead.
 - **Functional options**: for constructors/APIs with three or more optional arguments (or those expected to grow), use the functional options pattern with an `Option` interface and unexported `options` struct rather than long parameter lists or boolean flags.
+
+---
+
+## Temporal Best Practices (Go)
+
+> This section covers best practices for building reliable, maintainable workflows with [Temporal](https://docs.temporal.io/) in Go.
+
+### Workflow Design — Determinism
+
+Temporal replays workflow history to reconstruct state. Any non-deterministic operation in a workflow function will cause a non-deterministic error during replay.
+
+**Rules:**
+- Never call `time.Now()` or `time.Sleep()` directly — use `workflow.Now(ctx)` and `workflow.Sleep(ctx, d)`.
+- Never use `math/rand` directly — use `workflow.NewRandom(ctx)` for random values.
+- Never read from environment variables, files, or external state inside a workflow function.
+- Never spawn raw goroutines (`go func() {...}`) — use `workflow.Go(ctx, func(ctx workflow.Context) {...})`.
+- Never use `context.Context` as workflow parameters — use `workflow.Context` instead.
+- Never use `select` with real channels — use `workflow.NewSelector(ctx)` instead.
+- All side-effecting or non-deterministic logic must be pushed into Activities.
+
+```go
+// Bad — not deterministic
+func MyWorkflow(ctx workflow.Context) error {
+    t := time.Now()         // non-deterministic
+    _ = os.Getenv("KEY")    // non-deterministic
+    return nil
+}
+
+// Good
+func MyWorkflow(ctx workflow.Context) error {
+    t := workflow.Now(ctx)  // deterministic replay-safe clock
+    _ = workflow.SideEffect(ctx, func(ctx workflow.Context) interface{} {
+        return os.Getenv("KEY") // side effect captured once
+    })
+    return nil
+}
+```
+
+### Activity Design
+
+Activities are the unit of work that performs all I/O and non-deterministic operations. They must be designed to be safe to retry.
+
+- **Idempotency**: every Activity must be safe to run more than once with the same inputs. Use idempotency keys when calling external APIs.
+- **Heartbeating**: long-running Activities must call `activity.RecordHeartbeat(ctx, details...)` periodically so the worker can detect failures and resume from the last checkpoint.
+- **Context propagation**: always accept `context.Context` as the first parameter so that Temporal can cancel the Activity on timeout.
+- **Return meaningful errors**: return non-retryable errors with `temporal.NewNonRetryableApplicationError` for permanent failures; return retryable errors (or plain `error`) for transient failures.
+
+```go
+func ProcessOrderActivity(ctx context.Context, orderID string) error {
+    // Heartbeat for long-running work
+    activity.RecordHeartbeat(ctx, "starting")
+
+    if err := externalClient.Process(ctx, orderID); err != nil {
+        if isPermanentFailure(err) {
+            // Temporal will NOT retry this
+            return temporal.NewNonRetryableApplicationError(
+                "permanent failure processing order",
+                "PermanentProcessError",
+                err,
+            )
+        }
+        return err // Temporal will retry
+    }
+    return nil
+}
+```
+
+### Worker Registration
+
+- Register all Workflows and Activities in the composition root / `main()` — never inside domain packages.
+- Group registrations by task queue; each `worker.Worker` instance must correspond to exactly one task queue.
+- Verify that every Workflow and Activity used in production is registered on at least one worker.
+
+```go
+w := worker.New(temporalClient, "order-processing", worker.Options{})
+w.RegisterWorkflow(OrderWorkflow)
+w.RegisterActivity(ProcessOrderActivity)
+w.RegisterActivity(NotifyCustomerActivity)
+```
+
+### Error Handling
+
+Use Temporal's typed error hierarchy to distinguish between retryable and non-retryable failures:
+
+| Error type | Retried by default | Use when |
+|---|---|---|
+| `temporal.ApplicationError` (retryable) | Yes | Transient failures; caller does not need to match the type |
+| `temporal.ApplicationError` (non-retryable) | No | Permanent / business-rule failures |
+| `temporal.CanceledError` | No | Activity/workflow was cancelled |
+| `temporal.TimeoutError` | No | Execution exceeded a deadline |
+
+Unwrap Temporal errors with `errors.As` to inspect the type at the calling layer:
+
+```go
+var appErr *temporal.ApplicationError
+if errors.As(err, &appErr) {
+    log.Error("activity failed", zap.String("type", appErr.Type()), zap.Error(appErr))
+}
+```
+
+### Workflow Versioning
+
+When changing workflow logic that may affect in-flight executions, use `workflow.GetVersion` to maintain backward compatibility. Never remove a `GetVersion` check until all workflows that used the old branch have completed.
+
+```go
+const (
+    _featureAddNotification = "add-notification"
+    _defaultVersion         = workflow.DefaultVersion
+    _versionOne             = 1
+)
+
+func OrderWorkflow(ctx workflow.Context, order Order) error {
+    v := workflow.GetVersion(ctx, _featureAddNotification, _defaultVersion, _versionOne)
+
+    ao := workflow.ActivityOptions{StartToCloseTimeout: 30 * time.Second}
+    ctx = workflow.WithActivityOptions(ctx, ao)
+
+    if err := workflow.ExecuteActivity(ctx, ProcessOrderActivity, order.ID).Get(ctx, nil); err != nil {
+        return fmt.Errorf("process order: %w", err)
+    }
+
+    if v >= _versionOne {
+        if err := workflow.ExecuteActivity(ctx, NotifyCustomerActivity, order.ID).Get(ctx, nil); err != nil {
+            return fmt.Errorf("notify customer: %w", err)
+        }
+    }
+    return nil
+}
+```
+
+### Signals, Queries, and Updates
+
+- **Signals** are fire-and-forget messages delivered to a running workflow. Handle them with `workflow.GetSignalChannel(ctx, name).Receive(ctx, &val)` or via a `workflow.NewSelector`.
+- **Queries** must be read-only and must not modify workflow state. Register with `workflow.SetQueryHandler`.
+- **Updates** (Temporal ≥ 1.21) combine signal delivery and synchronous validation. Use `workflow.SetUpdateHandlerWithOptions` and provide a validator function to reject invalid inputs before they are written to history.
+- Name signals, queries, and updates as lowercase kebab-case strings (e.g. `"cancel-order"`, `"get-status"`).
+
+```go
+const _signalCancelOrder = "cancel-order"
+
+func OrderWorkflow(ctx workflow.Context, order Order) error {
+    cancelCh := workflow.GetSignalChannel(ctx, _signalCancelOrder)
+
+    ao := workflow.ActivityOptions{StartToCloseTimeout: 30 * time.Second}
+    ctx = workflow.WithActivityOptions(ctx, ao)
+
+    sel := workflow.NewSelector(ctx)
+    var processErr error
+    actFuture := workflow.ExecuteActivity(ctx, ProcessOrderActivity, order.ID)
+    sel.AddFuture(actFuture, func(f workflow.Future) {
+        processErr = f.Get(ctx, nil)
+    })
+    sel.AddReceive(cancelCh, func(c workflow.ReceiveChannel, _ bool) {
+        var reason string
+        c.Receive(ctx, &reason)
+        processErr = temporal.NewCanceledError(reason)
+    })
+    sel.Select(ctx)
+
+    return processErr
+}
+```
+
+### Retries and Timeouts
+
+Always configure timeouts explicitly — never rely on Temporal's unlimited defaults in production.
+
+| Option | Purpose | Guideline |
+|---|---|---|
+| `StartToCloseTimeout` | Max time for a single Activity attempt | Required; set based on p99 latency |
+| `ScheduleToCloseTimeout` | Max total time including all retries | Set for Activities with SLA requirements |
+| `HeartbeatTimeout` | Max time between heartbeats | Required for long-running Activities |
+| `WorkflowExecutionTimeout` | Max lifetime of an entire workflow | Set to prevent unbounded open workflows |
+| `WorkflowRunTimeout` | Max lifetime of a single workflow run | Useful for workflows that use `ContinueAsNew` |
+
+```go
+ao := workflow.ActivityOptions{
+    StartToCloseTimeout:  30 * time.Second,
+    ScheduleToCloseTimeout: 5 * time.Minute,
+    HeartbeatTimeout:     10 * time.Second,
+    RetryPolicy: &temporal.RetryPolicy{
+        InitialInterval:    time.Second,
+        BackoffCoefficient: 2.0,
+        MaximumInterval:    30 * time.Second,
+        MaximumAttempts:    5,
+        NonRetryableErrorTypes: []string{"PermanentProcessError"},
+    },
+}
+ctx = workflow.WithActivityOptions(ctx, ao)
+```
+
+### ContinueAsNew
+
+Use `workflow.NewContinueAsNewError` to restart a workflow with fresh history when it processes unbounded event streams or long-running loops. This prevents history size from growing indefinitely.
+
+```go
+const _maxIterations = 1000
+
+func PollingWorkflow(ctx workflow.Context, state State) error {
+    for i := 0; i < _maxIterations; i++ {
+        // ... process one iteration ...
+    }
+    // Hand off to a new run with updated state
+    return workflow.NewContinueAsNewError(ctx, PollingWorkflow, state)
+}
+```
+
+### Testing
+
+Use `testsuite.WorkflowTestSuite` for unit-testing workflows and activities in a deterministic, in-process environment. Do not call a real Temporal server in unit tests.
+
+- Mock Activities with `env.OnActivity(...)` to control return values and assert call counts.
+- Use `env.RegisterDelayedCallback` to simulate signals and timers.
+- Test Activities independently with plain Go unit tests — they are ordinary functions.
+
+```go
+func TestOrderWorkflow_Success(t *testing.T) {
+    suite.Run(t, new(OrderWorkflowTestSuite))
+}
+
+type OrderWorkflowTestSuite struct {
+    suite.Suite
+    testsuite.WorkflowTestSuite
+}
+
+func (s *OrderWorkflowTestSuite) Test_ProcessOrder() {
+    env := s.NewTestWorkflowEnvironment()
+    env.OnActivity(ProcessOrderActivity, mock.Anything, "order-123").Return(nil)
+    env.OnActivity(NotifyCustomerActivity, mock.Anything, "order-123").Return(nil)
+
+    env.ExecuteWorkflow(OrderWorkflow, Order{ID: "order-123"})
+
+    s.True(env.IsWorkflowCompleted())
+    s.NoError(env.GetWorkflowError())
+    env.AssertExpectations(s.T())
+}
+```
+
+### Naming Conventions
+
+| Artifact | Convention | Example |
+|---|---|---|
+| Workflow function | `MixedCaps` + `Workflow` suffix | `OrderWorkflow` |
+| Activity function | `MixedCaps` + `Activity` suffix | `ProcessOrderActivity` |
+| Task queue name | kebab-case string constant | `"order-processing"` |
+| Signal / query / update name | kebab-case string constant | `"cancel-order"` |
+| Workflow ID | Unique, human-readable, business-scoped | `"order-" + orderID` |
+
+### Code Quality Checklist — Temporal
+
+Before requesting a review on Temporal-related changes, verify:
+
+- [ ] Workflow functions contain no non-deterministic code (no `time.Now`, no I/O, no raw goroutines).
+- [ ] Every Activity is idempotent and accepts `context.Context` as the first parameter.
+- [ ] Long-running Activities call `activity.RecordHeartbeat` with a `HeartbeatTimeout` set.
+- [ ] `StartToCloseTimeout` is set on every `ActivityOptions` block.
+- [ ] Non-retryable errors use `temporal.NewNonRetryableApplicationError`.
+- [ ] Workflow logic changes use `workflow.GetVersion` to protect in-flight executions.
+- [ ] Workflows that process unbounded events use `workflow.NewContinueAsNewError`.
+- [ ] Worker registration happens in the composition root, not inside domain packages.
+- [ ] Workflow and Activity unit tests use `testsuite.WorkflowTestSuite` and mock all Activities.
