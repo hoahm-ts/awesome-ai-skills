@@ -262,7 +262,7 @@ domain        ➜  shared ports/types + infrastructure abstractions
     t.Parallel()
     tests := []struct{ ... }{ ... }
     for _, tt := range tests {
-      tt := tt // capture range variable
+      // Do NOT add "tt := tt" — Go 1.22+ captures loop variables by reference automatically.
       t.Run(tt.name, func(t *testing.T) {
         t.Parallel()
         // ...
@@ -284,7 +284,7 @@ domain        ➜  shared ports/types + infrastructure abstractions
     {name: "empty name returns error", give: ..., want: ..., wantErr: ErrInvalidInput},
   }
   for _, tt := range tests {
-    tt := tt
+    // Do NOT add "tt := tt" — Go 1.22+ captures loop variables by reference automatically.
     t.Run(tt.name, func(t *testing.T) {
       t.Parallel()
       got, err := MyFunc(tt.give)
