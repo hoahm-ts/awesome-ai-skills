@@ -45,6 +45,7 @@ repo root/
 │   ├── release.yaml                 # Release drafter configuration
 │   ├── PULL_REQUEST_TEMPLATE.md     # Default pull request template
 │   └── workflows/
+│       ├── ci.yml                   # CI workflow: lint, test, and coverage reporting
 │       └── labeler.yml              # GitHub Actions workflow to auto-label pull requests
 └── src/                             # Go module root
     ├── go.mod

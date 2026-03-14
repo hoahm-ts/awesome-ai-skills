@@ -50,7 +50,7 @@ jobs:
         working-directory: src
         run: |
           go vet ./...
-          go test -coverprofile=coverage.out ./internal/... ./pkg/...
+          go test -coverprofile=coverage.out -covermode=atomic ./internal/... ./pkg/...
           COVERAGE=$(go tool cover -func=coverage.out | grep '^total:' | awk '{print $3}')
           echo "percentage=${COVERAGE}" >> "$GITHUB_OUTPUT"
           {
@@ -105,6 +105,14 @@ jobs:
                 body,
               });
             }
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: src/coverage.out
+          flags: unittests
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   badge:
     name: Update Coverage Badge
@@ -185,3 +193,4 @@ jobs:
               ...(fileSha ? { sha: fileSha } : {}),
               branch,
             });
+
