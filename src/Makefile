@@ -65,6 +65,7 @@ install:
 	go install github.com/google/wire/cmd/wire@latest
 	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
 # ── Local development environment ────────────────────────────────────────────────
 
