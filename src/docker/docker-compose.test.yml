@@ -1,0 +1,39 @@
+# docker-compose.test.yml
+#
+# Minimal test environment for running unit/integration tests in CI.
+# Only the infrastructure services required by tests are started.
+# The application binary is NOT started here — tests exercise code directly.
+#
+# Usage (CI):
+#   docker compose -f docker/docker-compose.test.yml up -d --wait
+#   go test ./...
+#   docker compose -f docker/docker-compose.test.yml down -v
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: no
+    environment:
+      POSTGRES_USER: awesome_test
+      POSTGRES_PASSWORD: awesome_test
+      POSTGRES_DB: awesome_ai_skills_test
+    ports:
+      - "5432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data   # use RAM for speed; no persistence needed in CI
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U awesome_test -d awesome_ai_skills_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: no
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

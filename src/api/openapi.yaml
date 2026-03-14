@@ -11,10 +11,43 @@ servers:
     description: Local development server
 
 paths:
-  /health:
+  /ping:
     get:
-      summary: Health check
-      operationId: healthCheck
+      summary: Liveness check
+      operationId: ping
       responses:
         "200":
-          description: Service is healthy
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PingResponse"
+
+components:
+  schemas:
+    Envelope:
+      type: object
+      required: [data, message, time, verdict]
+      properties:
+        data:
+          description: Response payload; empty object for error responses.
+        message:
+          type: string
+          description: Human-readable description; empty string for success responses.
+        time:
+          type: string
+          format: date-time
+          description: Response timestamp in RFC 3339 format.
+        verdict:
+          type: string
+          enum: [success, error]
+          description: Machine-readable outcome code.
+
+    PingResponse:
+      allOf:
+        - $ref: "#/components/schemas/Envelope"
+      example:
+        data: {}
+        message: pong
+        time: "2026-03-14T17:02:59+07:00"
+        verdict: success

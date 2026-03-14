@@ -14,6 +14,7 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog"
 
+	"github.com/hoahm-ts/awesome-ai-skills/internal/handler"
 	"github.com/hoahm-ts/awesome-ai-skills/pkg/config"
 	"github.com/hoahm-ts/awesome-ai-skills/pkg/logger"
 	appMiddleware "github.com/hoahm-ts/awesome-ai-skills/pkg/middleware"
@@ -46,9 +47,7 @@ func run() error {
 	r.Use(chiMiddleware.RequestID)
 	r.Use(appMiddleware.RequestLogger(log))
 
-	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
+	r.Get("/ping", handler.Ping)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.App.Port),
