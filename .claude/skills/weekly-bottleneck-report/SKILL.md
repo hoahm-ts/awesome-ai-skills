@@ -29,6 +29,7 @@ This skill produces a deep engineering analysis for sprint leads and engineering
 | `projects` | One or more Jira project keys, comma-separated | *(required)* | `AGI` or `AGI,CO` |
 | `days` | Time window in days for stale-item detection | `7` | `14` |
 | `board` | Jira board ID; auto-detected from the first project if omitted | auto | `337` |
+| `recipient` | Slack destination for the condensed summary — a DM handle or channel name | user's own DM | `@john` or `#eng-leads` |
 
 If `projects` is missing or ambiguous, ask:
 > "Which project(s) would you like to analyse? (e.g., AGI, or AGI,CO for multiple). What time window in days? (default: 7)"
@@ -213,6 +214,51 @@ Where `<YYYY-MM-DD>` is today's date.
 
 ---
 
+## Step 10 — Send Slack Summary
+
+After saving the report, send a condensed summary to the `recipient` parameter (defaults to the user's own DM if not provided). Use Slack's text formatting (`*bold*`, `_italic_`, `•` bullets, `<url|label>` links).
+
+**Slack message format:**
+
+```
+*🔍 Sprint Bottleneck & Delay Report — {YYYY-MM-DD}*
+_Projects: {projects} · Time window: last {days} days_
+⚠️ _Internal engineering report — not for Confluence publication._
+
+*Sprint Health*
+• 📦 Open sprint issues: {n}
+• 🔴 Blocked: {n}  •  🧪 QA queue: {n}  •  🚀 Ready for release: {n}
+• 👤 Over-assigned devs: {n}  •  ⏩ Slipped 2+ sprints: {n}  •  💤 Stale (>{days}d): {n}
+
+*🔴 Top Delayed Items*
+• <{url}|{TICKET-ID}>: {summary} — {n} sprints slipped, assigned to {assignee}
+• _(list up to 5 highest-risk items)_
+
+*🚧 Blocked Items*
+• <{url}|{TICKET-ID}>: {summary} — blocked {n} days ({blocker type})
+• _(or: No blocked items.)_
+
+*👤 Over-Assigned Developers*
+• {name}: {n} active tickets — _{recommendation}_
+• _(or: No over-assigned developers.)_
+
+*🧪 QA Queue*
+• {n} items — top priority: <{url}|{TICKET-ID}> ({priority})
+• Concentration risk: {description or "none"}
+
+*✅ Immediate Actions*
+• *<{url}|{TICKET-ID}>* — {specific action} — *Owner*: {name}
+• …
+
+*📄 Full Report*
+Saved to `local_files/Jira/weekly/{YYYY-MM-DD}-bottleneck-report.md`
+```
+
+If Slack is not available, display the summary in the chat and note:
+> "ℹ️ Slack delivery is unavailable — displaying summary here instead."
+
+---
+
 ## Output Format
 
 ```markdown
@@ -353,6 +399,7 @@ Where `<YYYY-MM-DD>` is today's date.
 - **Confluence** — same server as Jira (optional, enriches workstream context)
 - **GitHub** — [github-mcp-server](https://github.com/github/github-mcp-server) (optional, surfaces stale PRs)
 - **Calendar** — Google Calendar or Outlook MCP (optional, surfaces upcoming deadlines)
+- **Slack** — [Slack MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/slack) (optional, delivers condensed summary via DM)
 ```
 
 ---
@@ -366,7 +413,8 @@ Where `<YYYY-MM-DD>` is today's date.
 - **Express all time estimates in business days** (exclude weekends and public holidays).
 - **QA queue is the #1 bottleneck** — always include queue depth, concentration risk, and recommended prioritisation.
 - **Mark the report as internal** — include the `> ⚠️ Internal engineering report` disclaimer at the top.
-- If a source (Confluence, GitHub, Calendar) is not accessible, note it and continue with remaining sources.
+- **Always send the Slack summary** after saving the report — default to the user's own DM when `recipient` is not provided.
+- If an optional source (Confluence, GitHub, Calendar, Slack) is not accessible, note it and continue with remaining sources.
 - If no data is found for a section, say so explicitly rather than omitting the section.
 - Include the Appendix with `/estimate-release` skill documentation in every generated report.
 
@@ -379,3 +427,5 @@ If a source is not connected:
 2. Continue with remaining sources
 3. If **Jira is not connected**, stop and inform the user:
    > "Jira is required for this report. Please ensure the Jira MCP integration is connected and retry."
+4. If **Slack is not connected**, display the condensed summary in the chat and note:
+   > "ℹ️ Slack delivery is unavailable — displaying summary here instead."

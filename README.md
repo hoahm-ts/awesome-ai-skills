@@ -206,10 +206,12 @@ Generate the weekly bottleneck report for AGI and CO for the last 14 days.
 **Option B — slash command**
 
 ```
-/weekly-bottleneck-report AGI                # single project, last 7 days
-/weekly-bottleneck-report AGI,CO             # multiple projects, last 7 days
-/weekly-bottleneck-report AGI 14             # last 14 days
-/weekly-bottleneck-report AGI 7 337          # explicit board ID
+/weekly-bottleneck-report AGI                      # single project, last 7 days, DM to yourself
+/weekly-bottleneck-report AGI,CO                   # multiple projects, last 7 days
+/weekly-bottleneck-report AGI 14                   # last 14 days
+/weekly-bottleneck-report AGI 7 337                # explicit board ID
+/weekly-bottleneck-report AGI 7 337 @john          # send Slack DM to @john
+/weekly-bottleneck-report AGI 7 337 #eng-leads     # post to a Slack channel
 ```
 
 **Parameters**
@@ -219,6 +221,7 @@ Generate the weekly bottleneck report for AGI and CO for the last 14 days.
 | `projects` | ✅ | — | One or more Jira project keys, comma-separated (e.g., `AGI` or `AGI,CO`) |
 | `days` | ❌ | `7` | Time window in days for stale-item detection |
 | `board` | ❌ | auto-detect | Jira board ID; auto-detected from the first project if omitted |
+| `recipient` | ❌ | user's own DM | Slack destination for the condensed summary — a channel (`#name`) or DM handle (`@name`) |
 
 **What it does**
 
@@ -228,7 +231,8 @@ Generate the weekly bottleneck report for AGI and CO for the last 14 days.
 4. Flags over-assigned developers (3+ concurrent active tickets) and context-switching risks.
 5. Estimates release timelines per workstream using the `/estimate-release` methodology.
 6. Produces tiered recommendations (immediate, this sprint, process improvements).
-7. Saves the report to `local_files/Jira/weekly/<YYYY-MM-DD>-bottleneck-report.md`.
+7. Saves the full report to `local_files/Jira/weekly/<YYYY-MM-DD>-bottleneck-report.md`.
+8. Sends a condensed summary to the `recipient` via Slack DM (defaults to your own DM if not provided).
 
 **Prerequisites**
 
@@ -237,8 +241,9 @@ The skill requires MCP integrations for the sources you want to search:
 - **Confluence** *(optional)* — same server as Jira; enriches workstream groupings
 - **GitHub** *(optional)* — [github-mcp-server](https://github.com/github/github-mcp-server); surfaces stale PRs
 - **Calendar** *(optional)* — Google Calendar or Outlook MCP; surfaces upcoming deadlines
+- **Slack** *(optional)* — [Slack MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/slack); delivers the condensed summary
 
-If an optional source is not connected, the skill notes it and continues with remaining sources. Jira is required.
+If Slack is not connected, the skill displays the summary in-chat. If any other optional source is not connected, the skill notes it and continues with remaining sources. Jira is required.
 
 ### How to use the `estimate-release` skill
 
