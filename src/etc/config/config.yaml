@@ -1,0 +1,24 @@
+APP_NAME=awesome-ai-skills
+APP_ENV=development
+APP_PORT=8080
+
+# PostgreSQL
+DATABASE_DSN=postgres://user:password@localhost:5432/awesome_ai_skills?sslmode=disable
+
+# Redis
+REDIS_ADDR=localhost:6379
+REDIS_PASSWORD=
+
+# Kafka
+KAFKA_BROKER=localhost:9092
+KAFKA_GROUP_ID=awesome-ai-skills
+
+# Temporal
+TEMPORAL_HOST_PORT=localhost:7233
+TEMPORAL_NAMESPACE=default
+TEMPORAL_TASK_QUEUE=default
+
+# Datadog
+DD_SERVICE=awesome-ai-skills
+DD_ENV=development
+DD_AGENT_HOST=localhost

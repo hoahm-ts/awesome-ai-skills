@@ -1,0 +1,20 @@
+openapi: "3.1.0"
+info:
+  title: Awesome AI Skills API
+  version: "0.1.0"
+  description: >
+    REST API for awesome-ai-skills.
+    Add endpoint definitions here following the OpenAPI 3.1 specification.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service is healthy
