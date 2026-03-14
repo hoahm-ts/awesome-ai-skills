@@ -12,9 +12,11 @@ permissions:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: self-hosted-cpu
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
@@ -36,9 +38,10 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v1.64.2
           working-directory: src
           go-version-file: src/go.mod
+          args: --new-from-rev=origin/main --timeout=5m --config .golangci.yml
 
   test:
     name: Test
