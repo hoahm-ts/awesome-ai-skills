@@ -6,7 +6,7 @@ This file provides project-specific instructions for [Junie](https://www.jetbrai
 
 ## Getting Started
 
-Before making any changes, read `AGENTS.md` for the canonical coding guidelines and project overview.
+Read `AGENTS.md` first and follow it as the source of truth for all coding guidelines and project conventions. It takes precedence over any instructions in this file.
 
 ---
 
