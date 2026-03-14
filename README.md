@@ -21,6 +21,9 @@ repo root/
     ├── init-labels.sh               # Script to create standard GitHub issue labels
     ├── init-repo-settings.sh        # Script to apply standard repository settings
     ├── labeler.yml                  # Label-to-file-pattern mappings for the labeler workflow
+    ├── rulesets/
+    │   ├── protect-main.json        # Ruleset: protect the default branch
+    │   └── general-rule.json        # Ruleset: general rules for all branches
     ├── release.yaml                 # Release drafter configuration
     ├── PULL_REQUEST_TEMPLATE.md     # Default pull request template
     └── workflows/
@@ -145,6 +148,47 @@ The workflow triggers on `pull_request_target` events (opened, synchronized, or 
 ### 4. Copy AI agent configuration files
 
 Copy the relevant files from this repository into your project (see the [Directory Structure](#directory-structure) table above) and customise them for your tech stack.
+
+### 4. Configure branch rulesets
+
+The repository ships with two ruleset definition files under `.github/rulesets/` that encode the team's branch-protection policy. Import them through the GitHub UI or apply them via the GitHub CLI:
+
+```bash
+# Replace OWNER and REPO with your actual repository owner and name (e.g. octocat/my-repo)
+gh api repos/OWNER/REPO/rulesets --method POST --input .github/rulesets/protect-main.json
+gh api repos/OWNER/REPO/rulesets --method POST --input .github/rulesets/general-rule.json
+```
+
+#### Ruleset: `protect-main.json` — Protect the default branch
+
+Targets the **default branch** (`~DEFAULT_BRANCH`) with the following rules:
+
+| Rule | Setting |
+|---|---|
+| Require signed commits | ✅ enabled |
+| Restrict deletions | ✅ enabled |
+| Block force pushes | ✅ enabled |
+| Require a pull request before merging | ✅ enabled |
+| — Required approvals | 1 |
+| — Allowed merge methods | Squash only |
+| Require code quality results | Errors |
+| Automatically request Copilot code review | Review new pushes + Review draft pull requests |
+
+#### Ruleset: `general-rule.json` — General rules for all branches
+
+Targets **all branches** (`~ALL`) with the following rules:
+
+| Rule | Setting |
+|---|---|
+| Require a pull request before merging | ✅ enabled |
+| — Required approvals | 1 |
+| — Allowed merge methods | Squash only |
+| Require code quality results | Warnings and higher |
+| Automatically request Copilot code review | Review new pushes + Review draft pull requests |
+
+> **Note:** Both rulesets use `"enforcement": "active"`. Change this to `"evaluate"` if you want to trial the rules without enforcing them.
+
+---
 
 ## Contributing
 
