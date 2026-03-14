@@ -22,6 +22,8 @@ repo root/
 ├── JUNIE.md                         # Junie (JetBrains AI) specific instructions
 ├── .cursorrules                     # Cursor AI editor rules
 ├── docs/
+│   └── architectures/
+│       └── architecture.md          # High-level system architecture overview
 │   └── repository-initialisation.md # Step-by-step guide to initialise a new repository
 ├── .claude/
 │   ├── settings.json                # Claude project settings
