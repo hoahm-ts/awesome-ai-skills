@@ -396,3 +396,157 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
 
 - **Test tables**: use table-driven tests with `t.Run` subtests for repeated logic. Name the slice `tests` and each case `tt`. Use `give` / `want` prefixes for input/output fields. Avoid complex conditional logic or branching inside table test loops — split into separate `Test...` functions instead.
 - **Functional options**: for constructors/APIs with three or more optional arguments (or those expected to grow), use the functional options pattern with an `Option` interface and unexported `options` struct rather than long parameter lists or boolean flags.
+
+---
+
+## Kafka Best Practices (Go)
+
+> These guidelines apply to all Go services that produce or consume Kafka messages.
+> Follow them alongside the Go Style Guidelines above.
+
+### Client Library
+
+- Pick one library and use it consistently across all services: [franz-go](https://github.com/twmb/franz-go) (recommended for its idiomatic Go API and first-class context support) or [confluent-kafka-go](https://github.com/confluentinc/confluent-kafka-go).
+- Wrap the Kafka client behind a port interface so it can be replaced or mocked without touching domain code:
+  ```go
+  // ports/kafka.go
+  type Producer interface {
+    Produce(ctx context.Context, msg *Message) error
+    Close() error
+  }
+
+  type Consumer interface {
+    Subscribe(topics []string) error
+    Poll(ctx context.Context) (*Message, error)
+    CommitOffsets(ctx context.Context) error
+    Close() error
+  }
+  ```
+- Register concrete client implementations in the composition root; never instantiate them inside domain packages.
+
+### Producer
+
+- Use `acks=all` (or `RequiredAcks: kgo.AllISRAcks()`) to ensure durable writes to all in-sync replicas.
+- Enable idempotent producers to prevent duplicate messages on retry (`idempotent: true` / `kgo.ProducerIdempotent()`).
+- Never fire-and-forget produce calls — always check the delivery error before advancing:
+  ```go
+  if err := producer.Produce(ctx, msg); err != nil {
+    return fmt.Errorf("produce to %s: %w", msg.Topic, err)
+  }
+  ```
+- Key messages consistently: use a stable business key (e.g. entity ID) to preserve ordering within a partition.
+- Tune `linger.ms` and `batch.size` deliberately: lower values favour latency; higher values favour throughput. Document your chosen values and the reason.
+
+### Consumer
+
+- Commit offsets **only after** processing succeeds to guarantee at-least-once delivery; never auto-commit.
+- Assign a unique `group.id` per logical consumer; never share a group ID between unrelated services.
+- Handle rebalances explicitly: flush or checkpoint in-flight work inside `ConsumerGroupHandler.Cleanup` before returning, so no messages are lost mid-batch.
+- Set `max.poll.interval.ms` long enough to cover the worst-case processing time; breach causes the consumer to leave the group and trigger rebalance.
+- Apply back-pressure: pass messages over a bounded channel to the processing goroutine pool; do not accumulate unbounded in memory:
+  ```go
+  work := make(chan *Message, cfg.WorkerBufferSize) // bounded
+  ```
+- Always perform a **graceful shutdown**: stop polling new messages → drain the work channel → commit offsets → close the client (see [Graceful Shutdown](#graceful-shutdown) below).
+
+### Error Handling
+
+- Distinguish transient errors (network timeouts, leader elections) from fatal errors (schema decode failure, business rule violation):
+  - **Transient**: retry with exponential back-off.
+  - **Fatal**: route the raw message to a dead-letter topic (DLT) with headers describing the failure; do not retry.
+- Never silently drop messages — every failure must be either retried, sent to the DLT, or result in an explicit alert.
+- Wrap Kafka errors with context before returning:
+  ```go
+  // Bad:  return err
+  // Good: return fmt.Errorf("consume %s partition %d offset %d: %w", topic, partition, offset, err)
+  ```
+- Include structured fields on every error log: `topic`, `partition`, `offset`, `consumer_group`, and `error`.
+
+### Schema & Serialization
+
+- Use a schema registry (Confluent Schema Registry or Apicurio) with Avro, Protobuf, or JSON Schema for all production topics.
+- Design schemas for **backwards and forwards compatibility**: add optional fields; never remove or rename existing fields without a migration plan.
+- Annotate Go structs with serialization tags that match the schema field names exactly:
+  ```go
+  type OrderCreated struct {
+    OrderID   string `json:"order_id"   avro:"order_id"`
+    CreatedAt int64  `json:"created_at" avro:"created_at"` // Unix millis
+  }
+  ```
+- Keep schema version metadata (subject, version, schema ID) in the message headers rather than inside the payload.
+
+### Observability
+
+- Emit consumer lag per topic-partition as a gauge metric (label: `topic`, `partition`, `consumer_group`). Alert when lag exceeds a defined threshold.
+- Record processing latency as a histogram for every consumed message (label: `topic`, `consumer_group`, `status`).
+- Propagate trace context via message headers using the [W3C Trace Context](https://www.w3.org/TR/trace-context/) format; extract it at the consumer and start a child span for each message:
+  ```go
+  ctx = otel.GetTextMapPropagator().Extract(ctx, kafkaHeaderCarrier(msg.Headers))
+  ctx, span := tracer.Start(ctx, "consume "+msg.Topic)
+  defer span.End()
+  ```
+- Log at least: `topic`, `partition`, `offset`, `key`, `consumer_group`, `trace_id`, and processing latency at the DEBUG level on success and ERROR level on failure.
+
+### Testing
+
+- Unit-test domain logic and adapter code against the `Producer`/`Consumer` interfaces using fakes or mocks — never connect to a real broker in unit tests.
+- Use [`kfake`](https://pkg.go.dev/github.com/twmb/franz-go/pkg/kfake) (franz-go's in-process broker) or [`testcontainers-go`](https://github.com/testcontainers/testcontainers-go) for integration tests that require a real Kafka wire protocol.
+- In integration tests, assert:
+  - Messages are produced to the correct topic and partition key.
+  - Offsets are committed only after successful processing.
+  - Fatal messages are routed to the DLT with the expected error headers.
+- Never use a shared broker state between test cases — reset or re-create topics between runs to keep tests deterministic.
+
+### Configuration
+
+- Consolidate all Kafka settings in a single, explicit config struct; avoid scattered `os.Getenv` calls across packages:
+  ```go
+  type KafkaConfig struct {
+    Brokers         []string      `yaml:"brokers"`
+    GroupID         string        `yaml:"group_id"`
+    Topics          []string      `yaml:"topics"`
+    DeadLetterTopic string        `yaml:"dead_letter_topic"`
+    TLSEnabled      bool          `yaml:"tls_enabled"`
+    SASLMechanism   string        `yaml:"sasl_mechanism"`
+    SessionTimeout  time.Duration `yaml:"session_timeout"`
+    Workers         int           `yaml:"workers"`
+    WorkerBuffer    int           `yaml:"worker_buffer"`
+  }
+  ```
+- Enable TLS and a SASL mechanism (`SCRAM-SHA-512` or `OAUTHBEARER`) in all non-local environments; never use plaintext in staging or production.
+- Document every configuration knob with an inline comment describing the default, valid range, and impact.
+
+### Graceful Shutdown
+
+- On receiving a termination signal, follow this sequence to avoid message loss:
+  1. Cancel the consumer context to stop polling new messages.
+  2. Wait for in-flight processing goroutines to finish (use `sync.WaitGroup`).
+  3. Commit the final batch of offsets.
+  4. Close the Kafka client.
+- Encode this sequence using the goroutine lifecycle pattern from the [Goroutines](#goroutines) section:
+  ```go
+  func (c *Consumer) Run(ctx context.Context) error {
+    var wg sync.WaitGroup
+    work := make(chan *Message, c.cfg.WorkerBuffer)
+
+    wg.Add(1)
+    go func() {
+      defer wg.Done()
+      c.poll(ctx, work) // stops when ctx is cancelled
+    }()
+
+    for i := 0; i < c.cfg.Workers; i++ {
+      wg.Add(1)
+      go func() {
+        defer wg.Done()
+        c.process(work)
+      }()
+    }
+
+    <-ctx.Done()     // wait for external cancel
+    close(work)      // signal workers to drain and exit
+    wg.Wait()        // wait for all goroutines to finish
+    return c.client.CommitOffsets(context.Background())
+  }
+  ```
+- Set a shutdown deadline (e.g. 30 s) by passing a timeout context to `CommitOffsets`; log an error and exit if the deadline is exceeded.
