@@ -11,60 +11,60 @@ import (
 
 // Config holds the complete application configuration.
 type Config struct {
-	App      AppConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	Kafka    KafkaConfig
-	Temporal TemporalConfig
-	Datadog  DatadogConfig
+	App      AppConfig      `yaml:"app"`
+	Database DatabaseConfig `yaml:"database"`
+	Redis    RedisConfig    `yaml:"redis"`
+	Kafka    KafkaConfig    `yaml:"kafka"`
+	Temporal TemporalConfig `yaml:"temporal"`
+	Datadog  DatadogConfig  `yaml:"datadog"`
 }
 
 // AppConfig holds HTTP server and general application settings.
 type AppConfig struct {
-	Name            string
-	Env             string
-	Port            int
-	LogLevel        string
-	Timeout         time.Duration
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
-	IdleTimeout     time.Duration
-	ShutdownTimeout time.Duration
+	Name            string        `yaml:"name"`
+	Env             string        `yaml:"env"`
+	Port            int           `yaml:"port"`
+	LogLevel        string        `yaml:"log_level"`
+	Timeout         time.Duration `yaml:"-"`
+	ReadTimeout     time.Duration `yaml:"-"`
+	WriteTimeout    time.Duration `yaml:"-"`
+	IdleTimeout     time.Duration `yaml:"-"`
+	ShutdownTimeout time.Duration `yaml:"-"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
 type DatabaseConfig struct {
-	DSN          string
-	MaxOpenConns int
-	MaxIdleConns int
-	MaxLifetime  time.Duration
+	DSN          string        `yaml:"dsn"`
+	MaxOpenConns int           `yaml:"-"`
+	MaxIdleConns int           `yaml:"-"`
+	MaxLifetime  time.Duration `yaml:"-"`
 }
 
 // RedisConfig holds Redis connection settings.
 type RedisConfig struct {
-	Addr     string
-	Password string
-	DB       int
+	Addr     string `yaml:"addr"`
+	Password string `yaml:"password"`
+	DB       int    `yaml:"db"`
 }
 
 // KafkaConfig holds Kafka connection settings.
 type KafkaConfig struct {
-	Brokers []string
-	GroupID string
+	Brokers []string `yaml:"brokers"`
+	GroupID string   `yaml:"group_id"`
 }
 
 // TemporalConfig holds Temporal connection settings.
 type TemporalConfig struct {
-	HostPort  string
-	Namespace string
-	TaskQueue string
+	HostPort  string `yaml:"host_port"`
+	Namespace string `yaml:"namespace"`
+	TaskQueue string `yaml:"task_queue"`
 }
 
 // DatadogConfig holds Datadog observability settings.
 type DatadogConfig struct {
-	ServiceName string
-	Env         string
-	AgentHost   string
+	ServiceName string `yaml:"service"`
+	Env         string `yaml:"env"`
+	AgentHost   string `yaml:"agent_host"`
 }
 
 // Load reads configuration from environment variables and returns a validated Config.

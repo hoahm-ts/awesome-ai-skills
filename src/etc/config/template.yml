@@ -1,30 +1,30 @@
 app:
-  name: {{ .Env.APP_NAME }}
-  env: {{ .Env.APP_ENV }}
-  port: {{ .Env.APP_PORT }}
-  log_level: {{ .Env.APP_LOG_LEVEL }}
-  read_timeout_seconds: {{ .Env.APP_READ_TIMEOUT_SECONDS }}
-  write_timeout_seconds: {{ .Env.APP_WRITE_TIMEOUT_SECONDS }}
-  idle_timeout_seconds: {{ .Env.APP_IDLE_TIMEOUT_SECONDS }}
-  shutdown_timeout_seconds: {{ .Env.APP_SHUTDOWN_TIMEOUT_SECONDS }}
+  name: {{default "awesome-ai-skills" .Env.APP_NAME}}
+  env: {{default "production" .Env.APP_ENV}}
+  port: {{default "8080" .Env.APP_PORT}}
+  log_level: {{default "info" .Env.APP_LOG_LEVEL}}
+  read_timeout_seconds: {{default "15" .Env.APP_READ_TIMEOUT_SECONDS}}
+  write_timeout_seconds: {{default "15" .Env.APP_WRITE_TIMEOUT_SECONDS}}
+  idle_timeout_seconds: {{default "60" .Env.APP_IDLE_TIMEOUT_SECONDS}}
+  shutdown_timeout_seconds: {{default "30" .Env.APP_SHUTDOWN_TIMEOUT_SECONDS}}
 
 database:
-  dsn: {{ .Env.DATABASE_DSN }}
+  dsn: {{default "" .Env.DATABASE_DSN}}
 
 redis:
-  addr: {{ .Env.REDIS_ADDR }}
-  password: {{ .Env.REDIS_PASSWORD }}
+  addr: {{default "localhost:6379" .Env.REDIS_ADDR}}
+  password: {{default "" .Env.REDIS_PASSWORD}}
 
 kafka:
-  broker: {{ .Env.KAFKA_BROKER }}
-  group_id: {{ .Env.KAFKA_GROUP_ID }}
+  broker: {{default "localhost:9092" .Env.KAFKA_BROKER}}
+  group_id: {{default "awesome-ai-skills" .Env.KAFKA_GROUP_ID}}
 
 temporal:
-  host_port: {{ .Env.TEMPORAL_HOST_PORT }}
-  namespace: {{ .Env.TEMPORAL_NAMESPACE }}
-  task_queue: {{ .Env.TEMPORAL_TASK_QUEUE }}
+  host_port: {{default "localhost:7233" .Env.TEMPORAL_HOST_PORT}}
+  namespace: {{default "default" .Env.TEMPORAL_NAMESPACE}}
+  task_queue: {{default "default" .Env.TEMPORAL_TASK_QUEUE}}
 
 datadog:
-  service: {{ .Env.DD_SERVICE }}
-  env: {{ .Env.DD_ENV }}
-  agent_host: {{ .Env.DD_AGENT_HOST }}
+  service: {{default "awesome-ai-skills" .Env.DD_SERVICE}}
+  env: {{default "production" .Env.DD_ENV}}
+  agent_host: {{default "localhost" .Env.DD_AGENT_HOST}}

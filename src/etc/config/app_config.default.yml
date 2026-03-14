@@ -1,0 +1,30 @@
+app:
+  name: awesome-ai-skills
+  env: production
+  port: 8080
+  log_level: info
+  read_timeout_seconds: 15
+  write_timeout_seconds: 15
+  idle_timeout_seconds: 60
+  shutdown_timeout_seconds: 30
+
+database:
+  dsn: ""
+
+redis:
+  addr: localhost:6379
+  password: ""
+
+kafka:
+  broker: localhost:9092
+  group_id: awesome-ai-skills
+
+temporal:
+  host_port: localhost:7233
+  namespace: default
+  task_queue: default
+
+datadog:
+  service: awesome-ai-skills
+  env: production
+  agent_host: localhost
