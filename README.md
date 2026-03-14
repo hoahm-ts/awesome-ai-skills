@@ -1,5 +1,7 @@
 # awesome-ai-skills
 
+[![codecov](https://codecov.io/gh/hoahm-ts/awesome-ai-skills/graph/badge.svg)](https://codecov.io/gh/hoahm-ts/awesome-ai-skills)
+
 A curated collection of configuration files, instructions, and best practices for working with AI coding agents. This repository is a personal journey into the world of AI agents, where I share my experiences, insights, and lessons learned while exploring various AI skills and technologies.
 
 ## Table of Contents
@@ -42,6 +44,7 @@ repo root/
 │   ├── release.yaml                 # Release drafter configuration
 │   ├── PULL_REQUEST_TEMPLATE.md     # Default pull request template
 │   └── workflows/
+│       ├── ci.yml                   # CI workflow: lint, test, and coverage reporting
 │       └── labeler.yml              # GitHub Actions workflow to auto-label pull requests
 └── src/                             # Go module root
     ├── go.mod
