@@ -102,15 +102,34 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
 - Keep PRs focused; avoid drive-by refactors unless they are directly necessary.
 - If behaviour changes, state explicitly what the old and new behaviour are.
 
-**Description:** Always follow [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) and **fill in all fields** before opening a PR. The description must cover:
+**Description:** The PR body **must use the exact section structure** from [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md). Do not invent custom headings — copy the template and fill in every section:
 
-- **References** — link to the Jira ticket, GitHub issues, or design docs (Figma, PRDs, etc.).
-- **Type of change** — mark the relevant type (`feat`, `fix`, `docs`, `chore`, `refactor`, `migration/database`).
-- **What changed** — a concise summary of what was added, modified, or removed.
-- **Why** — motivation / problem statement; why this change is needed.
-- **How did you test it** — steps to validate the change locally or in CI.
-- **Potential risks** — what could be broken when deploying this change to production.
-- **Is hotfix candidate** — whether this PR requires a hotfix or broader community notification.
+```markdown
+## References
+- **Jira:** <link>
+- **Related:** #<issue>
+- **Materials:** <link>
+
+## Type of Change
+- [x] `<type>` — <label>
+
+## What changed?
+<concise summary of what was added, modified, or removed>
+
+## Why?
+<motivation / problem statement>
+
+## How did you test it?
+<steps to validate locally or in CI>
+
+## Potential risks
+<what could break in production>
+
+## Is hotfix candidate?
+<Yes / No>
+```
+
+Leave no section blank or with placeholder text.
 
 ---
 
@@ -140,3 +159,4 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
 - Confirm DI/wiring compiles cleanly if applicable.
 - Do not commit secrets, credentials, or sensitive data.
 - Follow the directory structure documented in `README.md`.
+- Write the PR description using the **exact section structure** from [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) — fill in every section, leave nothing blank.
