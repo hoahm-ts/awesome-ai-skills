@@ -12,6 +12,7 @@ A curated collection of configuration files, instructions, and best practices fo
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
 - [Using Claude Code Skills](#using-claude-code-skills)
+- [AI-Augmented SDLC Guide](docs/ai-sdlc-guide.md)
 - [Repository Initialisation](docs/repository-initialisation.md)
 - [Contributing](#contributing)
 - [License](#license)
@@ -27,6 +28,7 @@ repo root/
 ├── .cursorrules                     # Cursor AI editor rules
 ├── docs/                            # Architecture and design documentation
 │   ├── architecture.md              # High-level system architecture overview
+│   ├── ai-sdlc-guide.md             # AI-augmented SDLC: environment setup and development process
 │   └── repository-initialisation.md # Step-by-step guide to initialise a new repository
 ├── openspec/                        # Spec-driven workflow artifacts
 │   └── config.yaml
@@ -118,6 +120,7 @@ This repository provides a unified set of instructions and configuration files f
 1. Clone this repository as a reference or template.
 2. Copy the relevant configuration files into your own project.
 3. Customise the instructions to match your project's conventions, tech stack, and coding standards.
+4. Follow the [AI-Augmented SDLC Guide](docs/ai-sdlc-guide.md) to set up your development environment and start using AI tools across the full development lifecycle.
 
 ## Using Claude Code Skills
 
