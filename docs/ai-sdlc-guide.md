@@ -27,8 +27,101 @@ This guide explains how to set up your development environment and use AI tools 
 
 This guide documents the team's AI-augmented SDLC. The workflow integrates Claude Code, OpenSpec, GitHub Copilot, Junie, and other tools to automate code generation, testing, review, and delivery — with humans remaining in control of requirements, acceptance, and architectural decisions.
 
-```
-Jira ticket  →  /opsx:explore  →  /opsx:propose  →  /opsx:apply  →  tests  →  PR  →  review  →  /opsx:archive
+```mermaid
+flowchart TD
+    Start([New Feature / Bug / Task]) --> S1
+
+    subgraph S1["Step 1 — Gather Requirements"]
+        direction TB
+        R1[Collect BRD · PRD · ADRs\nGoogle Drive / Confluence]
+        R2[Create Jira ticket\nLink all materials]
+        R1 --> R2
+    end
+
+    S1 --> ambig{Requirements\nclear?}
+    ambig -- No --> explore
+
+    subgraph S2["Step 2 — Analyze & Design"]
+        direction TB
+        explore["/opsx:explore\nThink-partner session"]
+        propose["/opsx:propose\nGenerate artifacts"]
+        review_art["Review artifacts\nproposal.md · design.md · tasks.md"]
+        explore --> propose
+        propose --> review_art
+    end
+
+    ambig -- Yes --> propose
+    review_art --> art_ok{Artifacts\napproved?}
+    art_ok -- Revise --> propose
+
+    art_ok -- Approved --> S3
+
+    subgraph S3["Step 3 — Implement"]
+        direction TB
+        apply["/opsx:apply\nWork through tasks.md"]
+        codegen["make generate\noapi-codegen stubs"]
+        ide["IDE AI assist\nJunie · Copilot"]
+        apply --> codegen
+        codegen --> ide
+    end
+
+    S3 --> S4
+
+    subgraph S4["Step 4 — Test"]
+        direction TB
+        devup["make dev-up\nStart local deps"]
+        tests["go test ./...\nTable-driven · t.Parallel"]
+        lint["golangci-lint run ./...\nAll errors resolved"]
+        devup --> tests --> lint
+    end
+
+    lint --> tests_ok{"Tests &\nlint pass?"}
+    tests_ok -- Fix failures --> S3
+
+    tests_ok -- Pass --> S5
+
+    subgraph S5["Step 5 — Commit & PR"]
+        direction TB
+        commit["git commit\nConventional Commits"]
+        push["git push + open PR\nPR template filled"]
+        label["labeler.yml\nAuto-labels applied"]
+        commit --> push --> label
+    end
+
+    S5 --> S6
+
+    subgraph S6["Step 6 — Code Review"]
+        direction TB
+        copilot["Copilot auto-review\nprotect-main.json ruleset"]
+        skills["/pr-review-toolkit\nsilent-failure-hunter · simplify"]
+        human["Human reviewer\n≥1 approval required"]
+        ci["CI checks\nall green"]
+        copilot --> skills --> human --> ci
+    end
+
+    ci --> review_ok{"Approved &\nCI green?"}
+    review_ok -- Address feedback --> S3
+
+    review_ok -- Approved --> merge["Squash merge → main\nbranch auto-deleted"]
+
+    merge --> S7
+
+    subgraph S7["Step 7 — Archive"]
+        direction TB
+        archive["/opsx:archive\nMove to openspec/changes/archive/"]
+        jira_done["Close Jira ticket\nAdd PR link as comment"]
+        archive --> jira_done
+    end
+
+    S7 --> Done([Done])
+
+    style S1 fill:#e8f4fd,stroke:#2196F3
+    style S2 fill:#f3e8fd,stroke:#9C27B0
+    style S3 fill:#e8fdf0,stroke:#4CAF50
+    style S4 fill:#fdf8e8,stroke:#FF9800
+    style S5 fill:#fde8e8,stroke:#F44336
+    style S6 fill:#e8f0fd,stroke:#3F51B5
+    style S7 fill:#f0fde8,stroke:#8BC34A
 ```
 
 ---
@@ -73,7 +166,8 @@ Claude Code reads its project-level settings from `.claude/settings.json`. The f
 }
 ```
 
-Tighten the `deny` list for production or shared environments as required by your security policy.
+> [!WARNING]
+> The default configuration grants Claude broad access (`Bash(*)`, `Read(*)`, `Write(*)`). This is intentional for local development but is a significant blast radius if a prompt is misinterpreted. Tighten the `deny` list — for example, deny `Bash(rm *)`, `Bash(git push *)`, or restrict `Write` to specific directories — before using this configuration in shared, staging, or production environments.
 
 ---
 
@@ -85,12 +179,6 @@ OpenSpec is the spec-driven workflow tool that creates and manages change artifa
 
 ```bash
 npm install -g openspec
-```
-
-**Verify**
-
-```bash
-openspec --version
 ```
 
 **Configure the project**
@@ -243,8 +331,14 @@ Gather the following materials and save links or copies where your team stores s
    - Related Jira epics or parent stories
 5. Assign the ticket to yourself and move it to **Backlog** or **In Progress** as appropriate.
 
-**Ticket naming convention**: use a clear, imperative title that describes the outcome.  
+**Ticket naming convention**: use a clear, imperative title that describes the outcome.
 Example: `Add user authentication via OAuth2`.
+
+> **Tip — create the ticket with AI**: Once your Atlassian MCP is configured (see [Section 4](#4-mcp-integrations)), you can have Claude create and link the ticket for you instead of doing it manually:
+> ```
+> Create a Jira Story in board DOP titled "Add OAuth2 login via Google identity provider".
+> Set priority to High and link the PRD at <confluence-url>.
+> ```
 
 ---
 
@@ -339,8 +433,8 @@ Use your IDE's AI features for focused, in-file assistance during implementation
 
 | IDE | AI feature | Best used for |
 |---|---|---|
-| GoLand | Junie | Inline code completion, refactoring suggestions, test generation within the IDE |
-| VS Code | GitHub Copilot | Multi-file edits, natural-language refactors, explaining existing code |
+| GoLand | Junie | Single-file inline edits, refactoring, and test generation without leaving the IDE |
+| VS Code | GitHub Copilot | Agentic multi-file edits, cross-file refactors via chat, and PR-level code review |
 
 Both tools read the project instruction files (`JUNIE.md`, `.github/copilot-instructions.md`) to stay aligned with team conventions.
 
@@ -365,7 +459,17 @@ Follow the testing conventions in `AGENTS.md`:
 - `t.Parallel()` on independent tests.
 - `require.ErrorIs` / `require.Equal` for assertions.
 
-#### 4.2 — Run the tests
+#### 4.2 — Start local dependencies
+
+Many services depend on MariaDB, Redis, or Kafka. Start them before running tests:
+
+```bash
+make dev-up
+```
+
+This spins up the containers defined in `docker/docker-compose.dev.yml`. Run `make dev-down` when you are done to tear them down.
+
+#### 4.3 — Run the tests
 
 ```bash
 cd src && go test ./...
@@ -379,7 +483,7 @@ cd src && make test
 
 Fix any failures before proceeding to Step 5. If a failure reveals a design issue, return to Step 2 and update the artifacts accordingly.
 
-#### 4.3 — Run the linter
+#### 4.4 — Run the linter
 
 ```bash
 cd src && golangci-lint run ./...
@@ -404,7 +508,9 @@ All lint errors must be resolved before the PR is opened.
 Use [Conventional Commits](https://www.conventionalcommits.org/) format:
 
 ```bash
-git add .
+# Stage specific files — avoid git add . to prevent accidentally committing
+# secrets, .env files, or large generated binaries.
+git add src/ openspec/
 git commit -m "feat(auth): add OAuth2 login via Google identity provider"
 ```
 
@@ -447,13 +553,29 @@ The `.github/workflows/labeler.yml` workflow automatically applies labels to the
 
 **Goal**: validate the change is correct, safe, and follows team conventions before merging.
 
-#### 6.1 — GitHub Copilot review (automatic)
+#### 6.1 — Claude Code review skills (optional, before opening the PR)
+
+Before requesting human review, use the built-in review skills inside Claude Code to catch common issues early:
+
+```
+/pr-review-toolkit:review-pr
+```
+
+Specialist sub-skills that run automatically as part of the toolkit, or can be invoked individually:
+
+| Skill | What it catches |
+|---|---|
+| `pr-review-toolkit:silent-failure-hunter` | Silent failures, swallowed errors, inappropriate fallback behaviour |
+| `pr-review-toolkit:code-simplifier` | Over-engineered code, unnecessary complexity |
+| `pr-review-toolkit:code-reviewer` | Style violations, AGENTS.md guideline breaches |
+
+#### 6.2 — GitHub Copilot review (automatic)
 
 The `.github/rulesets/protect-main.json` ruleset configures GitHub to **automatically request a Copilot code review** on every new push and draft PR. Copilot will post inline comments and a summary review within a few minutes of the PR being opened.
 
 Review the Copilot feedback and address any comments you agree with before requesting human review.
 
-#### 6.2 — Human review
+#### 6.3 — Human review
 
 Assign the PR to a team reviewer. The branch ruleset requires **at least one approval** before merging.
 
@@ -463,7 +585,7 @@ Reviewers should verify:
 - Tests cover the new or changed behaviour.
 - No secrets, credentials, or PII are committed.
 
-#### 6.3 — Fix review feedback
+#### 6.4 — Fix review feedback
 
 For code-level feedback, use Claude Code or your IDE AI to apply fixes quickly:
 
@@ -474,7 +596,7 @@ Fix it by routing the call through the domain service instead.
 
 After making changes, push the updated branch — CI will re-run automatically and Copilot will review the new push.
 
-#### 6.4 — Merge
+#### 6.5 — Merge
 
 Once approved and all CI checks pass, merge the PR. The branch ruleset restricts merging to **squash only** — GitHub will squash all commits into a single commit on `main`.
 
@@ -527,6 +649,9 @@ Move the Jira ticket to **Done** (or the equivalent closed status on your board)
 | `/opsx:propose` | Generate proposal, design, and task artifacts |
 | `/opsx:apply` | Implement tasks from an active change |
 | `/opsx:archive` | Archive a completed change |
+| `/pr-review-toolkit:review-pr` | Full PR review using specialist sub-agents |
+| `/pr-review-toolkit:silent-failure-hunter` | Hunt for swallowed errors and silent failures |
+| `/pr-review-toolkit:code-simplifier` | Simplify over-engineered code |
 | `/project-status-summary` | Generate a project health report from Jira, Confluence, Slack |
 | `/weekly-bottleneck-report` | Generate a sprint bottleneck and delay report |
 | `/estimate-release` | Estimate the release date for a single Jira ticket |
