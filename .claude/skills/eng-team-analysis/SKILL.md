@@ -26,6 +26,7 @@ Be concise. Use plain words. No filler. Every sentence must carry insight or evi
 | `project` | Project name used to filter Jira, Slack, and Drive | `tpbank` | `payments` |
 | `board` | Jira board name or key | `CO` | `ENG` |
 | `window` | Look-back window in days | `30` | `60` |
+| `channel` | Slack destination for the report summary — a DM handle or channel name | user's own DM | `@john` or `#eng-analysis` |
 
 If any required parameter is missing, ask before proceeding:
 
@@ -207,7 +208,48 @@ local_files/eng-analysis/{project}-{YYYY-MM-DD}-eng-team-analysis.md
 
 Where `{project}` is the project parameter and `{YYYY-MM-DD}` is today's date in ISO 8601 format (e.g., `2026-03-15`).
 
-Display the report in the chat window. If the Slack MCP is connected, send an executive summary to the user's own DM unless a `channel` parameter was provided.
+Display the report in the chat window.
+
+---
+
+## Slack Delivery
+
+After saving the report, send a condensed summary to the Slack destination specified by the `channel` parameter. If `channel` is not provided, send the summary as a DM to the user's own Slack account. Use Slack's text formatting (`*bold*`, `_italic_`, `•` bullets, `<url|label>` links).
+
+**Slack message format:**
+
+```
+*📊 Engineering Team Analysis — {project} ({board} board)*
+_Last updated: {YYYY-MM-DD} · Time range: last {window} days_
+
+*Executive Summary*
+{3–5 sentence summary of key findings, top risk, and biggest insight}
+
+*🗂️ Activity Clusters*
+• {Cluster name}: {n} tickets — median TAT {n}d — top assignee: {name}
+• _(list all clusters, one bullet each)_
+
+*👥 Top Stakeholders*
+• {Role}: {n} requests — most common ask: {cluster name}
+• _(list top 3–5 stakeholder groups)_
+
+*🎯 Top JTBD Clusters*
+• *{JTBD cluster name}* — {one-sentence description} — AI potential: {HIGH/MEDIUM/LOW}
+• _(list all JTBD clusters)_
+
+*🤖 AI Transformation Roadmap*
+• Phase 1 (months 1–3): {JTBD clusters to automate}
+• Phase 2 (months 3–6): {JTBD clusters to augment}
+• Phase 3 (months 6–12): {JTBD clusters to elevate}
+
+*🔍 Biggest Insight*
+{One paragraph — the meta-pattern the data reveals that stakeholders would not have named themselves}
+
+*📄 Full Report*
+Saved to `local_files/eng-analysis/{project}-{YYYY-MM-DD}-eng-team-analysis.md`
+```
+
+If the Slack integration is not available, display the summary in the chat window only and note: "ℹ️ Slack delivery is unavailable — displaying summary here instead."
 
 ---
 
@@ -220,8 +262,10 @@ Display the report in the chat window. If the Slack MCP is connected, send an ex
 - **Be specific in recommendations.** Name the ticket, the person, and the exact action — never generic advice.
 - **Preserve nuance.** If data is ambiguous or conflicting, say so rather than forcing a clean narrative.
 - **Respect privacy.** Only include names and roles relevant to engineering work. Do not include personal information.
+- **Always send the Slack summary** after saving the report — default to the user's own DM when `channel` is not provided.
 - If **Jira is not connected**, stop and inform the user before proceeding.
-- If optional sources (Google Drive, Slack, Calendar) are inaccessible, note the gap and continue with remaining sources.
+- If optional sources (Google Drive, Calendar) are inaccessible, note the gap and continue with remaining sources.
+- If **Slack is not connected**, display the condensed summary in the chat and note that delivery was unavailable.
 
 ---
 
@@ -230,7 +274,7 @@ Display the report in the chat window. If the Slack MCP is connected, send an ex
 | Source | If unavailable |
 |--------|---------------|
 | Jira | Stop — this is required. Ask the user to connect the Jira MCP and retry. |
-| Slack | Note the gap. Skip Phase 1.3. Continue with Jira data only. |
+| Slack (data collection) | Note the gap. Skip Phase 1.3. Continue with Jira data only. |
+| Slack (report delivery) | Display the condensed summary in chat. Note: "ℹ️ Slack delivery is unavailable — displaying summary here instead." |
 | Google Drive | Note the gap. Skip Phase 1.4. Continue without transcript data. |
 | Google Calendar | Note the gap. Omit calendar-derived deadlines from the report. |
-| Slack delivery | Display the summary in chat. Note delivery was unavailable. |

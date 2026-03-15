@@ -157,11 +157,13 @@ Run an engineering team analysis for the payments project on the ENG board for t
 **Option B — slash command**
 
 ```
-/eng-team-analysis                           # all defaults: tpbank, CO board, 30 days
-/eng-team-analysis tpbank                    # explicit project, default board and window
-/eng-team-analysis tpbank CO                 # explicit project and board, default window
-/eng-team-analysis tpbank CO 60              # 60-day window
-/eng-team-analysis payments ENG 90           # different project with 90-day window
+/eng-team-analysis                                # all defaults: tpbank, CO board, 30 days, summary to your DM
+/eng-team-analysis tpbank                         # explicit project, default board and window
+/eng-team-analysis tpbank CO                      # explicit project and board, default window
+/eng-team-analysis tpbank CO 60                   # 60-day window
+/eng-team-analysis payments ENG 90                # different project with 90-day window
+/eng-team-analysis tpbank CO 30 @john             # send summary DM to @john
+/eng-team-analysis tpbank CO 30 #eng-analysis     # post summary to a channel
 ```
 
 **Parameters**
@@ -171,6 +173,7 @@ Run an engineering team analysis for the payments project on the ENG board for t
 | `project` | ❌ | `tpbank` | Project name used to filter Jira, Slack, and Drive |
 | `board` | ❌ | `CO` | Jira board name or key |
 | `window` | ❌ | `30` | Look-back window in days |
+| `channel` | ❌ | user's own DM | Slack destination for the condensed summary — a channel (`#name`) or DM handle (`@name`) |
 
 **What it does**
 
@@ -182,7 +185,7 @@ Run an engineering team analysis for the payments project on the ENG board for t
 6. Extracts Jobs-To-Be-Done per cluster, re-clusters them by demand-side structure, and produces a JTBD × Activity matrix.
 7. Rates each JTBD cluster HIGH / MEDIUM / LOW for AI automation potential and maps it to a three-phase roadmap.
 8. Generates a full PDF-ready report saved to `local_files/eng-analysis/{project}-{YYYY-MM-DD}-eng-team-analysis.md`.
-9. Sends an executive summary to your Slack DM (or a specified channel).
+9. **Sends a condensed summary to Slack via the `channel` parameter** (defaults to the user's own DM if `channel` is not provided). If Slack is not connected, displays the summary in chat.
 
 **Prerequisites**
 

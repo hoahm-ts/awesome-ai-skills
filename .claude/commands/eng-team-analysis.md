@@ -10,15 +10,17 @@ Run a full engineering team analysis for a given project, Jira board, and time w
 **Usage**
 
 ```
-/eng-team-analysis [project] [board] [window]
+/eng-team-analysis [project] [board] [window] [channel]
 ```
 
 Examples:
-- `/eng-team-analysis` — uses all defaults (project=tpbank, board=CO, window=30)
+- `/eng-team-analysis` — uses all defaults (project=tpbank, board=CO, window=30, summary sent to your DM)
 - `/eng-team-analysis tpbank` — explicit project, default board and window
 - `/eng-team-analysis tpbank CO` — explicit project and board, default window
-- `/eng-team-analysis tpbank CO 60` — explicit project, board, and 60-day window
+- `/eng-team-analysis tpbank CO 60` — 60-day window
 - `/eng-team-analysis payments ENG 90` — different project with 90-day window
+- `/eng-team-analysis tpbank CO 30 @john` — send summary DM to @john
+- `/eng-team-analysis tpbank CO 30 #eng-analysis` — post summary to a channel
 
 If no input is provided, prompt:
 > "Which project, board, and time window would you like to analyse? (defaults: project=tpbank, board=CO, window=30 days)"
@@ -31,7 +33,7 @@ Follow the full analysis and output format defined in `.claude/skills/eng-team-a
 
 ### Quick reference
 
-1. **Parse input** — extract `project` (default: `tpbank`), `board` (default: `CO`), `window` (default: `30`)
+1. **Parse input** — extract `project` (default: `tpbank`), `board` (default: `CO`), `window` (default: `30`), `channel` (default: user's own DM)
 2. **Collect Jira data** — paginate all tickets on `{board}` updated in the last `{window}` days; compute TAT metrics per ticket
 3. **Search Slack** — channels containing `{project}` + messages referencing `{project}`, last `{window}` days
 4. **Search Google Drive** — meeting transcripts and recordings involving the team (optional)
@@ -51,12 +53,13 @@ Follow the full analysis and output format defined in `.claude/skills/eng-team-a
 | `project` | ❌ | `tpbank` | Project name used to filter Jira tickets, Slack channels, and Drive search |
 | `board` | ❌ | `CO` | Jira board name or key |
 | `window` | ❌ | `30` | Look-back window in days |
+| `channel` | ❌ | user's own DM | Slack destination for the condensed summary — a channel (`#name`) or DM handle (`@name`) |
 
 ---
 
 ## Output
 
-The full report is saved to `local_files/eng-analysis/{project}-{YYYY-MM-DD}-eng-team-analysis.md` and displayed in the chat.
+The full report is saved to `local_files/eng-analysis/{project}-{YYYY-MM-DD}-eng-team-analysis.md` and displayed in the chat. A condensed summary is sent to the `channel` destination via Slack (or the user's own DM if `channel` was not provided).
 
 Report sections:
 1. Executive Summary
