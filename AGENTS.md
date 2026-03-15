@@ -27,10 +27,8 @@ This file is the **canonical reference** for all AI coding agents and human cont
 - [Documentation Requirements](#documentation-requirements)
 - [File & Directory Conventions](#file--directory-conventions)
 - [Contribution Guidelines](#contribution-guidelines)
-- [Git Workflow & Branching Rules](#git-workflow--branching-rules)
-- [Pull Request Guidelines](#pull-request-guidelines)
+- [Git Workflow & Pull Request Guidelines](#git-workflow--pull-request-guidelines)
 - [AI Agent Behaviour](#ai-agent-behaviour)
-- [PR / Change Etiquette](#pr--change-etiquette)
 
 ---
 
@@ -88,21 +86,31 @@ When adding or altering a capability:
 2. Make the smallest possible changes that fully address the issue.
 3. Verify your changes before opening a pull request.
 4. Ensure the `README.md` directory structure table stays up to date if new files are added.
-5. Open a pull request with a clear title and description (see PR etiquette below).
+5. Open a pull request with a clear title and description (see [Git Workflow & Pull Request Guidelines](#git-workflow--pull-request-guidelines) below).
 
 ---
 
-## Git Workflow & Branching Rules
+## Git Workflow & Pull Request Guidelines
+
+### Branch Naming
 
 Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No description suffix. Examples: `spec/JIRA-1`, `feat/JIRA-1`, `fix/JIRA-1`.
 
----
+### Creating a Pull Request
 
-## Pull Request Guidelines
+- **Title format:** `<TICKET_NUMBER>: <description>` — e.g. `JIRA-29: init the project structure`
+- Keep PRs focused; avoid drive-by refactors unless they are directly necessary.
+- If behaviour changes, state explicitly what the old and new behaviour are.
 
-**Title format:** `<TICKET_NUMBER>: <description>` — e.g. `JIRA-29: init the project structure`
+**Description:** Always follow [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) and **fill in all fields** before opening a PR. The description must cover:
 
-**Description:** Always follow [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md). Fill in all fields.
+- **References** — link to the Jira ticket, GitHub issues, or design docs (Figma, PRDs, etc.).
+- **Type of change** — mark the relevant type (`feat`, `fix`, `docs`, `chore`, `refactor`, `migration/database`).
+- **What changed** — a concise summary of what was added, modified, or removed.
+- **Why** — motivation / problem statement; why this change is needed.
+- **How did you test it** — steps to validate the change locally or in CI.
+- **Potential risks** — what could be broken when deploying this change to production.
+- **Is hotfix candidate** — whether this PR requires a hotfix or broader community notification.
 
 ---
 
@@ -132,15 +140,3 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
 - Confirm DI/wiring compiles cleanly if applicable.
 - Do not commit secrets, credentials, or sensitive data.
 - Follow the directory structure documented in `README.md`.
-
----
-
-## PR / Change Etiquette
-
-- Keep PRs focused; avoid drive-by refactors unless they are directly necessary.
-- Every PR description must include:
-  - **Motivation / problem statement** — why this change is needed.
-  - **What changed** — a concise summary of what was added, modified, or removed.
-  - **How to test** — steps to validate the change locally or in CI.
-  - **Migration / rollout notes** — any schema changes, feature flags, or deployment considerations.
-- If behaviour changes, state explicitly what the old and new behaviour are.
