@@ -1,5 +1,10 @@
+# syntax=docker/dockerfile:1
+
 # ── Build stage ──────────────────────────────────────────────────────────────────
-FROM golang:1.24-alpine AS base
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS base
+
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /src
 
@@ -8,7 +13,8 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -trimpath -o bin/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -ldflags="-s -w" -trimpath -o bin/api ./cmd/api
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────────
 FROM gcr.io/distroless/static-debian12:nonroot AS api
