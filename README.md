@@ -11,9 +11,9 @@ A curated collection of configuration files, instructions, and best practices fo
 - [Overview](#overview)
 - [Tech Stack](docs/tech-stacks.md)
 - [Getting Started](#getting-started)
+- [Repository Initialisation](#repository-initialisation)
 - [Using Claude Code Skills](docs/claude-code-skills.md)
 - [AI-Augmented SDLC Guide](docs/ai-sdlc-guide.md)
-- [Repository Initialisation](docs/repository-initialisation.md)
 - [Claude Desktop MCP Integration & Custom Skills Guide](docs/claude-desktop-mcp-guide.md)
 - [Contributing](#contributing)
 - [License](#license)
@@ -118,13 +118,13 @@ For the full technology reference, see [docs/tech-stacks.md](docs/tech-stacks.md
 3. Customise the instructions to match your project's conventions, tech stack, and coding standards.
 4. Follow the [AI-Augmented SDLC Guide](docs/ai-sdlc-guide.md) to set up your development environment and start using AI tools across the full development lifecycle.
 
+## Repository Initialisation
+
+> If you are cloning this repository as a scaffold for a new project, follow the step-by-step guide in [docs/repository-initialisation.md](docs/repository-initialisation.md) to apply the team's standard configuration to your new repository.
+
 ## Using Claude Code Skills
 
 For the full guide on available skills and how to use them, see [docs/claude-code-skills.md](docs/claude-code-skills.md).
-
-## Repository Initialisation
-
-For a step-by-step guide on setting up a new repository with the team's standard configuration, see [docs/repository-initialisation.md](docs/repository-initialisation.md).
 
 ---
 
