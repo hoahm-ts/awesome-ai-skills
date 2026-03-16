@@ -8,6 +8,7 @@
 
 - [Environment Variable Naming Conventions](#environment-variable-naming-conventions)
 - [Multi-stage Builds](#multi-stage-builds)
+- [Multi-Architecture Builds](#multi-architecture-builds)
 - [Distroless Base Images](#distroless-base-images)
 - [Security Hardening](#security-hardening)
 - [Image Tagging & Versioning](#image-tagging--versioning)
@@ -140,7 +141,7 @@ Always use a multi-stage `Dockerfile`. This separates the build environment from
 # syntax=docker/dockerfile:1
 
 # ── Stage 1: build ──────────────────────────────────────────────────────────
-FROM golang:1.24-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
@@ -151,7 +152,9 @@ RUN go mod download
 
 # Copy the rest of the source and build a statically linked binary.
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o /app/server ./cmd/server
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
@@ -170,6 +173,82 @@ Key decisions:
 - **`-trimpath`** — removes local file-system paths from the binary, improving reproducibility and avoiding information leakage.
 - **`-ldflags="-s -w"`** — strips the symbol table and DWARF debug info, reducing binary size by ~30%.
 - **`COPY go.mod go.sum ./` before `COPY . .`** — exploits Docker's layer cache.
+
+---
+
+## Multi-Architecture Builds
+
+Always build images for both `linux/amd64` and `linux/arm64`. This enables deployment on ARM-based cloud instances (AWS Graviton, GCP Tau T2A) and native development on Apple Silicon without emulation overhead.
+
+### Cross-compilation pattern
+
+Use `--platform=$BUILDPLATFORM` on the build stage so the Go toolchain runs natively on the build host. Pass `TARGETOS` and `TARGETARCH` — automatically injected by `buildx` — into the `go build` command:
+
+```dockerfile
+# syntax=docker/dockerfile:1
+
+# ── Stage 1: build ────────────────────────────────────────────────────────────
+# $BUILDPLATFORM = the host's native platform (keeps the toolchain fast)
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# TARGETOS / TARGETARCH are injected by buildx; they describe the *target* image.
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /app/server ./cmd/server
+
+# ── Stage 2: runtime ──────────────────────────────────────────────────────────
+FROM gcr.io/distroless/static-debian12:nonroot
+
+COPY --from=builder /app/server /server
+
+EXPOSE 8080
+USER nonroot:nonroot
+ENTRYPOINT ["/server"]
+```
+
+Key points:
+- **`--platform=$BUILDPLATFORM`** on the build stage — the Go compiler itself runs at native speed; only the output binary is cross-compiled.
+- **`CGO_ENABLED=0`** is mandatory for cross-compilation without a cross-libc toolchain.
+- **`TARGETOS` / `TARGETARCH`** — declare these with `ARG` *after* the `FROM` that uses them; buildx injects them automatically when `--platform` is specified.
+- The runtime stage needs **no** `--platform` flag — it always matches `TARGETARCH`.
+
+### Local build
+
+```bash
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t myorg/myservice:latest \
+  --push \
+  .
+```
+
+### CI (GitHub Actions)
+
+```yaml
+- name: Set up QEMU
+  uses: docker/setup-qemu-action@v3
+
+- name: Set up Docker Buildx
+  uses: docker/setup-buildx-action@v3
+
+- name: Build and push
+  uses: docker/build-push-action@v6
+  with:
+    platforms: linux/amd64,linux/arm64
+    push: ${{ github.event_name != 'pull_request' }}
+    cache-from: type=gha
+    cache-to: type=gha,mode=max
+```
+
+QEMU is required to emulate `arm64` on the `amd64` GitHub-hosted runner. The GHA layer cache (`type=gha`) keeps subsequent builds fast by reusing unchanged layers.
 
 ---
 
@@ -302,20 +381,22 @@ A self-contained health-check flag in your binary is the preferred approach for 
 #                            -t ghcr.io/myorg/myservice:latest .
 
 # ── Stage 1: dependency cache ─────────────────────────────────────────────────
-FROM golang:1.24-alpine AS deps
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS deps
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
 # ── Stage 2: build ────────────────────────────────────────────────────────────
-FROM deps AS builder
+FROM --platform=$BUILDPLATFORM deps AS builder
 
 ARG VERSION=dev
 ARG COMMIT_SHA=unknown
 ARG BUILD_TIME=unknown
+ARG TARGETOS
+ARG TARGETARCH
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath \
     -ldflags="-s -w \
       -X main.version=${VERSION} \
