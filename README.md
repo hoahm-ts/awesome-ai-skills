@@ -11,6 +11,7 @@ A curated collection of configuration files, instructions, and best practices fo
 - [Overview](#overview)
 - [Tech Stack](docs/tech-stacks.md)
 - [Architecture Decision Records](docs/adr/README.md)
+- [High-Level Design Documents](docs/hld/README.md)
 - [Getting Started](#getting-started)
 - [Repository Initialisation](#repository-initialisation)
 - [Using Claude Code Skills](docs/claude-code-skills.md)
@@ -38,6 +39,9 @@ repo root/
 │   ├── adr/                         # Architecture Decision Records (ADR index + template)
 │   │   ├── README.md                # ADR index with summary table and changelog
 │   │   └── ADR-00-template.md       # Reusable template for writing new ADRs
+│   ├── hld/                         # High-Level Design Documents (HLD index + template)
+│   │   ├── README.md                # HLD index with summary table and changelog
+│   │   └── HLD-00-template.md       # Reusable template for writing new HLDs
 │   └── conventions/                 # Stack-specific and cross-cutting coding conventions
 │       ├── diagram-conventions.md   # Diagram format, type selection, and usage guidelines
 │       ├── env-conventions.md       # Environment variable and Docker conventions
