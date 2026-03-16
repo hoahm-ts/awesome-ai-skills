@@ -121,7 +121,9 @@ flowchart TD
 
 ## AI Tool Selection Guide
 
-Choose the right AI tool based on the task at hand. Mixing tools is encouraged — use whichever fits the context.
+Choose the right AI tool based on the task at hand. The team is free to use any tools they are already familiar with — the list below is a recommended starting point, not a strict requirement.
+
+> **Before development**: collect enough context about the feature or fix. **Markdown is the preferred format** for all reference material (requirements, designs, API specs) because AI tools consume it most reliably.
 
 | Tool | Best for |
 |---|---|
@@ -129,7 +131,7 @@ Choose the right AI tool based on the task at hand. Mixing tools is encouraged �
 | **Gemini / ChatGPT / any AI chat** | Quick ad-hoc questions, multi-purpose tasks, planning, brainstorming; converting PDFs to Markdown; generating diagrams (PlantUML, Mermaid) |
 | **GitHub Copilot Agent** | Simple tasks and quick bug fixes; supports multiple simultaneous tasks directly in GitHub |
 | **GoLand + Junie** | JetBrains-native AI assistance; well-suited for complicated, multi-step tasks inside the IDE |
-| **Claude Code** | Fully automated, end-to-end implementation; can run multiple tasks simultaneously from the terminal |
+| **Claude Code** | Fully automated, end-to-end implementation; comprehensive PR review using specialised agents for complex, multi-file changes; can run multiple tasks simultaneously from the terminal |
 
 > **Tip**: For new features, start with **Atlassian Rovo** or an AI chat tool to clarify requirements, then hand off to **Claude Code** or **GoLand + Junie** for implementation.
 
