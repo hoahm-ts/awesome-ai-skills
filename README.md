@@ -12,6 +12,7 @@ A curated collection of configuration files, instructions, and best practices fo
 - [Tech Stack](docs/tech-stacks.md)
 - [Architecture Decision Records](docs/adr/README.md)
 - [High-Level Design Documents](docs/hld/README.md)
+- [Low-Level Design Documents](docs/lld/README.md)
 - [Getting Started](#getting-started)
 - [Repository Initialisation](#repository-initialisation)
 - [Using Claude Code Skills](docs/claude-code-skills.md)
@@ -42,6 +43,9 @@ repo root/
 │   ├── hld/                         # High-Level Design Documents (HLD index + template)
 │   │   ├── README.md                # HLD index with summary table and changelog
 │   │   └── HLD-00-template.md       # Reusable template for writing new HLDs
+│   ├── lld/                         # Low-Level Design Documents (LLD index + template)
+│   │   ├── README.md                # LLD index with summary table and changelog
+│   │   └── LLD-00-template.md       # Reusable template for writing new LLDs
 │   └── conventions/                 # Stack-specific and cross-cutting coding conventions
 │       ├── diagram-conventions.md   # Diagram format, type selection, and usage guidelines
 │       ├── env-conventions.md       # Environment variable and Docker conventions

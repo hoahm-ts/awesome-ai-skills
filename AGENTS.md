@@ -20,6 +20,7 @@ This file is the **canonical reference** for all AI coding agents and human cont
 | Diagrams (Mermaid / PlantUML) | [`docs/conventions/diagram-conventions.md`](docs/conventions/diagram-conventions.md) |
 | Architecture Decision Records | [`docs/adr/README.md`](docs/adr/README.md) |
 | High-Level Design Documents | [`docs/hld/README.md`](docs/hld/README.md) |
+| Low-Level Design Documents | [`docs/lld/README.md`](docs/lld/README.md) |
 
 ---
 
@@ -31,6 +32,7 @@ This file is the **canonical reference** for all AI coding agents and human cont
 - [Documentation Requirements](#documentation-requirements)
   - [Architecture Decision Records (ADRs)](#architecture-decision-records-adrs)
   - [High-Level Design Documents (HLDs)](#high-level-design-documents-hlds)
+  - [Low-Level Design Documents (LLDs)](#low-level-design-documents-llds)
 - [File & Directory Conventions](#file--directory-conventions)
 - [Contribution Guidelines](#contribution-guidelines)
 - [Git Workflow & Pull Request Guidelines](#git-workflow--pull-request-guidelines)
@@ -127,6 +129,35 @@ Record a new HLD whenever a significant system, feature, or service is being des
 ```
 docs/hld/HLD-01-user-authentication-service.md
 docs/hld/HLD-02-order-processing-pipeline.md
+```
+
+---
+
+### Low-Level Design Documents (LLDs)
+
+Record a new LLD whenever the internal implementation of a component or module requires detailed design before coding begins.
+
+> **LLD vs HLD:** An HLD describes the *system-level design* — components, data flows, and API contracts from a bird's-eye view. An LLD describes the *internal implementation* of a single component or module — packages, types, interfaces, and function-level behaviour. An LLD should reference its parent HLD.
+
+**When to write an LLD:**
+
+- A new module, package, or non-trivial internal component is being built.
+- The implementation involves complex type hierarchies, interfaces, or concurrency patterns.
+- The module has intricate error-handling, retry, or caching logic that benefits from upfront design.
+- The component has a dedicated testing strategy that needs to be agreed upon before writing code.
+
+**How to create an LLD:**
+
+1. Copy [`docs/lld/LLD-00-template.md`](docs/lld/LLD-00-template.md) to a new file named `docs/lld/LLD-XX-<short-title>.md`, where `XX` is the next available zero-padded number.
+2. Fill in **every** section of the template — leave no section blank or with placeholder text.
+3. Set the `Status` field to `draft` (or `review` / `approved` as appropriate).
+4. Add a row for the new LLD to the **Summary** table and the **Changelog** table in [`docs/lld/README.md`](docs/lld/README.md).
+
+**LLD file naming convention:**
+
+```
+docs/lld/LLD-01-user-authentication-service.md
+docs/lld/LLD-02-order-processing-service.md
 ```
 
 ---
