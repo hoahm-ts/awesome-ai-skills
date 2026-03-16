@@ -36,6 +36,7 @@ This file is the **canonical reference** for all AI coding agents and human cont
 - [File & Directory Conventions](#file--directory-conventions)
 - [Contribution Guidelines](#contribution-guidelines)
 - [Git Workflow & Pull Request Guidelines](#git-workflow--pull-request-guidelines)
+- [Consistency Checklist](#consistency-checklist)
 - [AI Agent Behaviour](#ai-agent-behaviour)
 
 ---
@@ -219,6 +220,59 @@ Branch format: `<type>/<ticket>` — ticket format is `JIRA-<number>`. No descri
 ```
 
 Leave no section blank or with placeholder text.
+
+---
+
+## Consistency Checklist
+
+Before submitting a feature spec, verify:
+
+**Structure**
+
+- [ ] All 14 sections present (omit with explicit "N/A — reason" if not applicable)
+- [ ] Interfaces defined before implementation details
+- [ ] File inventory lists all new and modified files
+- [ ] Open questions are clearly listed
+- [ ] Consistent with HLD and LLD Plan — deviations documented
+
+**Data Model** → [`postgresql-conventions.md`](docs/conventions/postgresql-conventions.md)
+
+- [ ] All DB tables have migration SQL and corresponding Go struct with GORM tags
+- [ ] Naming follows conventions (plural `snake_case` tables, `idx_`/`uq_` prefixes)
+
+**API Contracts** → [`restful-conventions.md`](docs/conventions/restful-conventions.md)
+
+- [ ] All endpoints follow the response envelope (`verdict`, `message`, `data`, `time`)
+- [ ] No PII in request/response examples
+
+**Redis** → [`redis-conventions.md`](docs/conventions/redis-conventions.md)
+
+- [ ] All Redis key patterns have explicit TTLs and types documented
+
+**Kafka** → [`kafka-conventions.md`](docs/conventions/kafka-conventions.md)
+
+- [ ] Topics follow `<env>.<platform>.<tenant>.<object>.<event_type>.<classification>` pattern
+- [ ] DLT topic documented
+
+**Temporal** → [`temporal-conventions.md`](docs/conventions/temporal-conventions.md)
+
+- [ ] Workflows follow determinism rules
+
+**Go** → [`golang-conventions.md`](docs/conventions/golang-conventions.md)
+
+- [ ] Error handling uses sentinel errors and `fmt.Errorf` wrapping
+
+**Observability** → [`logging-conventions.md`](docs/conventions/logging-conventions.md)
+
+- [ ] Log examples use standard fields; no PII in log examples
+
+**Diagrams**
+
+- [ ] Mermaid diagrams are Confluence-compatible (Mermaid 8.14.0)
+
+**Config**
+
+- [ ] Configuration section shows `lenders.config` schema; new lenders need zero code changes
 
 ---
 
