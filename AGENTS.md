@@ -19,6 +19,7 @@ This file is the **canonical reference** for all AI coding agents and human cont
 | Environment variables & Docker | [`docs/conventions/env-conventions.md`](docs/conventions/env-conventions.md) |
 | Diagrams (Mermaid / PlantUML) | [`docs/conventions/diagram-conventions.md`](docs/conventions/diagram-conventions.md) |
 | Architecture Decision Records | [`docs/adr/README.md`](docs/adr/README.md) |
+| High-Level Design Documents | [`docs/hld/README.md`](docs/hld/README.md) |
 
 ---
 
@@ -29,6 +30,7 @@ This file is the **canonical reference** for all AI coding agents and human cont
 - [Security & Data Handling](#security--data-handling)
 - [Documentation Requirements](#documentation-requirements)
   - [Architecture Decision Records (ADRs)](#architecture-decision-records-adrs)
+  - [High-Level Design Documents (HLDs)](#high-level-design-documents-hlds)
 - [File & Directory Conventions](#file--directory-conventions)
 - [Contribution Guidelines](#contribution-guidelines)
 - [Git Workflow & Pull Request Guidelines](#git-workflow--pull-request-guidelines)
@@ -95,6 +97,35 @@ Record a new ADR whenever a decision meets one or more of these criteria:
 ```
 docs/adr/ADR-01-use-postgresql-as-primary-datastore.md
 docs/adr/ADR-02-adopt-temporal-for-workflows.md
+```
+
+---
+
+### High-Level Design Documents (HLDs)
+
+Record a new HLD whenever a significant system, feature, or service is being designed. An HLD should exist before implementation begins.
+
+> **HLD vs ADR:** An ADR records a specific architectural *decision* and its rationale (e.g. "use PostgreSQL"). An HLD describes the *design* of a system or feature — its components, data flows, API contracts, and trade-offs. An HLD may reference one or more ADRs.
+
+**When to write an HLD:**
+
+- A new service, feature, or significant component is being introduced.
+- The design involves multiple teams, modules, or external integrations.
+- Non-trivial architectural or data-flow decisions are required.
+- The system has performance, scalability, or security implications that need upfront design.
+
+**How to create an HLD:**
+
+1. Copy [`docs/hld/HLD-00-template.md`](docs/hld/HLD-00-template.md) to a new file named `docs/hld/HLD-XX-<short-title>.md`, where `XX` is the next available zero-padded number.
+2. Fill in **every** section of the template — leave no section blank or with placeholder text.
+3. Set the `Status` field to `draft` (or `review` / `approved` as appropriate).
+4. Add a row for the new HLD to the **Summary** table and the **Changelog** table in [`docs/hld/README.md`](docs/hld/README.md).
+
+**HLD file naming convention:**
+
+```
+docs/hld/HLD-01-user-authentication-service.md
+docs/hld/HLD-02-order-processing-pipeline.md
 ```
 
 ---
