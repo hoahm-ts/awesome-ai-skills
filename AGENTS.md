@@ -17,6 +17,7 @@ This file is the **canonical reference** for all AI coding agents and human cont
 | Redis | [`docs/conventions/redis-conventions.md`](docs/conventions/redis-conventions.md) |
 | RESTful APIs | [`docs/conventions/restful-conventions.md`](docs/conventions/restful-conventions.md) |
 | Environment variables & Docker | [`docs/conventions/env-conventions.md`](docs/conventions/env-conventions.md) |
+| Diagrams (Mermaid / PlantUML) | [`docs/conventions/diagram-conventions.md`](docs/conventions/diagram-conventions.md) |
 
 ---
 
