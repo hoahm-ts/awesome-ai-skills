@@ -13,6 +13,7 @@ A curated collection of configuration files, instructions, and best practices fo
 - [Getting Started](#getting-started)
 - [Using Claude Code Skills](#using-claude-code-skills)
 - [Repository Initialisation](docs/repository-initialisation.md)
+- [Claude Desktop MCP Integration & Custom Skills Guide](docs/claude-desktop-mcp-guide.md)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -27,7 +28,8 @@ repo root/
 ├── .cursorrules                     # Cursor AI editor rules
 ├── docs/                            # Architecture and design documentation
 │   ├── architecture.md              # High-level system architecture overview
-│   └── repository-initialisation.md # Step-by-step guide to initialise a new repository
+│   ├── repository-initialisation.md # Step-by-step guide to initialise a new repository
+│   └── claude-desktop-mcp-guide.md  # Guide: connect Claude Desktop to MCP tools & create custom skills
 ├── openspec/                        # Spec-driven workflow artifacts
 │   └── config.yaml
 ├── .claude/
