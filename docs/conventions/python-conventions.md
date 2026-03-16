@@ -86,6 +86,7 @@ domain        ➜  shared ports/types + infrastructure abstractions
 - **Handler/command logic**: prefer parametrised tests for input validation and response mapping; use fakes or mocks for domain services via `unittest.mock` or `pytest-mock`.
 - **Integration adapters**: unit-test adapters with mocked HTTP/SDK responses (`responses`, `httpretty`, or `unittest.mock`). Do not call real external services in automated tests.
 - Avoid flaky tests; tests must be deterministic and independent of external state.
+- **Multi-tenancy**: the product supports multi-tenancy. Unit tests must use general, tenant-agnostic seed data. Features and test scenarios must not depend on or assume any specific client or tenant. If a requirement is client-specific, the implementation must remain general and the tests must validate behaviour using generic data only.
 - **Parametrised tests**: use `@pytest.mark.parametrize` for repeated logic with multiple inputs:
   ```python
   @pytest.mark.parametrize("give,want,want_err", [

@@ -85,6 +85,7 @@ domain        ➜  shared ports/types + infrastructure abstractions
 - **Handler/command logic**: prefer table-driven tests for input validation and response mapping; use fakes or mocks for domain services via interfaces.
 - **Integration adapters**: unit-test adapters with mocked HTTP/SDK responses. Do not call real external services in automated tests.
 - Avoid flaky tests; tests must be deterministic and independent of external state.
+- **Multi-tenancy**: the product supports multi-tenancy. Unit tests must use general, tenant-agnostic seed data. Features and test scenarios must not depend on or assume any specific client or tenant. If a requirement is client-specific, the implementation must remain general and the tests must validate behaviour using generic data only.
 - **Parallel execution**: mark independent unit tests with `t.Parallel()` so the test suite runs as fast as possible. Sub-tests inside a table-driven test should also call `t.Parallel()` where safe:
   ```go
   func TestFoo(t *testing.T) {
