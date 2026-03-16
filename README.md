@@ -10,6 +10,7 @@ A curated collection of configuration files, instructions, and best practices fo
 - [Directory Structure](#directory-structure)
 - [Overview](#overview)
 - [Tech Stack](docs/tech-stacks.md)
+- [Architecture Decision Records](docs/adr/README.md)
 - [Getting Started](#getting-started)
 - [Repository Initialisation](#repository-initialisation)
 - [Using Claude Code Skills](docs/claude-code-skills.md)
@@ -34,6 +35,9 @@ repo root/
 │   ├── claude-desktop-mcp-guide.md  # Guide: connect Claude Desktop to MCP tools & create custom skills
 │   ├── tech-stacks.md               # Tech stack reference
 │   ├── claude-code-skills.md        # Using Claude Code Skills: available skills and usage guide
+│   ├── adr/                         # Architecture Decision Records (ADR index + template)
+│   │   ├── README.md                # ADR index with summary table and changelog
+│   │   └── ADR-00-template.md       # Reusable template for writing new ADRs
 │   └── conventions/                 # Stack-specific and cross-cutting coding conventions
 │       ├── diagram-conventions.md   # Diagram format, type selection, and usage guidelines
 │       ├── env-conventions.md       # Environment variable and Docker conventions

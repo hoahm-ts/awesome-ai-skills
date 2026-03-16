@@ -18,6 +18,7 @@ This file is the **canonical reference** for all AI coding agents and human cont
 | RESTful APIs | [`docs/conventions/restful-conventions.md`](docs/conventions/restful-conventions.md) |
 | Environment variables & Docker | [`docs/conventions/env-conventions.md`](docs/conventions/env-conventions.md) |
 | Diagrams (Mermaid / PlantUML) | [`docs/conventions/diagram-conventions.md`](docs/conventions/diagram-conventions.md) |
+| Architecture Decision Records | [`docs/adr/README.md`](docs/adr/README.md) |
 
 ---
 
@@ -27,6 +28,7 @@ This file is the **canonical reference** for all AI coding agents and human cont
 - [Core Principles](#core-principles)
 - [Security & Data Handling](#security--data-handling)
 - [Documentation Requirements](#documentation-requirements)
+  - [Architecture Decision Records (ADRs)](#architecture-decision-records-adrs)
 - [File & Directory Conventions](#file--directory-conventions)
 - [Contribution Guidelines](#contribution-guidelines)
 - [Git Workflow & Pull Request Guidelines](#git-workflow--pull-request-guidelines)
@@ -71,6 +73,29 @@ When adding or altering a capability:
 - Update the API spec if the API contract changes.
 - Add inline package/module documentation for non-obvious modules or decisions.
 - Keep the `README.md` directory structure table up to date if new files are added.
+
+### Architecture Decision Records (ADRs)
+
+Record a new ADR whenever a decision meets one or more of these criteria:
+
+- It affects the system architecture, layering rules, or module boundaries.
+- It introduces or replaces a technology, framework, or third-party dependency.
+- It establishes a cross-cutting convention (e.g. error handling strategy, auth approach).
+- It is likely to be questioned or revisited in the future.
+
+**How to create an ADR:**
+
+1. Copy [`docs/adr/ADR-00-template.md`](docs/adr/ADR-00-template.md) to a new file named `docs/adr/ADR-XX-<short-title>.md`, where `XX` is the next available zero-padded number.
+2. Fill in **every** section of the template — leave no section blank or with placeholder text.
+3. Set the `Status` field to `proposed` (or `accepted` if the decision is already finalised).
+4. Add a row for the new ADR to the **Summary** table and the **Changelog** table in [`docs/adr/README.md`](docs/adr/README.md).
+
+**ADR file naming convention:**
+
+```
+docs/adr/ADR-01-use-postgresql-as-primary-datastore.md
+docs/adr/ADR-02-adopt-temporal-for-workflows.md
+```
 
 ---
 
