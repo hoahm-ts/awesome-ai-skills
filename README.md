@@ -33,7 +33,18 @@ repo root/
 │   ├── repository-initialisation.md # Step-by-step guide to initialise a new repository
 │   ├── claude-desktop-mcp-guide.md  # Guide: connect Claude Desktop to MCP tools & create custom skills
 │   ├── tech-stacks.md               # Tech stack reference
-│   └── claude-code-skills.md        # Using Claude Code Skills: available skills and usage guide
+│   ├── claude-code-skills.md        # Using Claude Code Skills: available skills and usage guide
+│   └── conventions/                 # Stack-specific and cross-cutting coding conventions
+│       ├── diagram-conventions.md   # Diagram format, type selection, and usage guidelines
+│       ├── env-conventions.md       # Environment variable and Docker conventions
+│       ├── golang-conventions.md    # Go style, testing, and architecture conventions
+│       ├── kafka-conventions.md     # Kafka producer/consumer conventions
+│       ├── logging-conventions.md   # Logging, errors, and observability conventions
+│       ├── postgresql-conventions.md # PostgreSQL and GORM conventions
+│       ├── python-conventions.md    # Python style, testing, and architecture conventions
+│       ├── redis-conventions.md     # Redis usage conventions
+│       ├── restful-conventions.md   # RESTful API conventions
+│       └── temporal-conventions.md  # Temporal workflow conventions
 ├── openspec/                        # Spec-driven workflow artifacts
 │   └── config.yaml
 ├── .claude/
