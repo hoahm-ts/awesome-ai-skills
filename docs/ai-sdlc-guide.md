@@ -83,9 +83,12 @@ flowchart TD
 
     subgraph S5["**Step 5 - Address Feedback**"]
         direction TB
-        fix_cmd["fix review PR#123"]
-        manual["Manual IDE Fixes"]
-        fix_cmd --- manual
+        fix_cmd["Claude Code: fix review PR#123"]
+        copilot_agent["GitHub Copilot Agent"]
+        codex_cursor["Codex · Cursor"]
+        junie_fix["GoLand + Junie"]
+        manual["Manual IDE Fix"]
+        fix_cmd --- copilot_agent --- codex_cursor --- junie_fix --- manual
     end
 
     review_ok -- "Needs Changes" --> S5
@@ -285,7 +288,7 @@ The full AI-augmented workflow maps to these steps:
 2. Analyze & design                  ← Claude Code /opsx:explore + /opsx:propose
 3. Implement                         ← Claude Code /opsx:apply + oapi-codegen
 4. Code review                       ← AI review (Copilot) + CI + human review
-5. Address feedback                  ← Claude Code / IDE fixes
+5. Address feedback                  ← any tool: Claude Code / Copilot Agent / Codex / Cursor / GoLand+Junie / Manual IDE
 6. Archive                           ← Claude Code /opsx:archive
 ```
 
@@ -519,9 +522,25 @@ Reviewers should verify:
 
 **Goal**: resolve all review comments before merging.
 
-#### 5.1 — Apply AI-assisted fixes
+Use the tool you are most comfortable with. There is no single required tool — pick based on the complexity of the change and your own preference.
 
-For code-level feedback, use Claude Code to apply fixes quickly:
+| Tool | Best for |
+|---|---|
+| **Claude Code** | Complex multi-file changes, architectural refactors, or fixes requiring broad context |
+| **GitHub Copilot Agent** | Simple, focused fixes directly in VS Code; quick inline suggestions |
+| **OpenAI Codex** | CLI-driven code generation; useful in terminal-centric workflows or when you prefer OpenAI models |
+| **Cursor** | Iterative, in-context edits in an AI-native editor |
+| **GoLand + Junie** | JetBrains-native AI assistance when GoLand is your primary IDE |
+| **Manual IDE fix** | Fastest option for trivial, well-understood, or purely stylistic changes |
+
+> **Tips**
+> - Manual fixes are often the fastest for small, clearly-defined changes — don't over-engineer the workflow.
+> - Ask Copilot for simple, single-location tasks (rename, add nil-check, reword a comment).
+> - Reserve Claude Code for changes that require reading many files or understanding broader context.
+
+#### 5.1 — Claude Code
+
+For code-level feedback that touches multiple files or requires context across the codebase, use Claude Code:
 
 ```
 fix review PR#123
@@ -534,15 +553,72 @@ The reviewer flagged that the handler is calling the repository directly.
 Fix it by routing the call through the domain service instead.
 ```
 
-#### 5.2 — Manual IDE fixes
+#### 5.2 — GitHub Copilot Agent
 
-For smaller or stylistic changes, apply fixes directly in your IDE. Use the Copilot or Junie inline suggestions to speed up edits.
+For simple, focused fixes inside VS Code, use Copilot Agent mode (requires GitHub Copilot Chat extension):
 
-#### 5.3 — Re-trigger review
+1. Open the Copilot Chat panel (`Ctrl+Alt+I` / `Cmd+Alt+I`).
+2. Switch to **Agent** mode using the mode selector in the chat input.
+3. Describe the fix in plain language, for example:
+
+```
+Add a nil-check before dereferencing the user pointer in handlers/auth.go line 42.
+```
+
+Copilot will propose a diff that you can accept or discard inline.
+
+#### 5.3 — OpenAI Codex
+
+[Codex CLI](https://github.com/openai/codex) is a terminal-based AI coding agent from OpenAI. Install it with `npm install -g @openai/codex`, then run it in your repository root:
+
+```bash
+codex "Fix the review comment: route the handler call through the domain service"
+```
+
+Codex reads the repository context and proposes changes you can review before applying.
+
+#### 5.4 — Cursor
+
+In Cursor, use the inline edit shortcut (`Ctrl+K` / `Cmd+K`) to apply a targeted fix:
+
+1. Select the flagged code block.
+2. Press `Ctrl+K` (`Cmd+K` on macOS).
+3. Type the instruction, for example:
+
+```
+Extract this logic into a separate validateInput helper function
+```
+
+Cursor applies the edit in-place. Review the diff in the editor before saving.
+
+#### 5.5 — GoLand + Junie
+
+If GoLand is your primary IDE:
+
+1. Open the **Junie** panel (View → Tool Windows → Junie).
+2. Describe the fix, for example:
+
+```
+The reviewer asked to add error wrapping with fmt.Errorf("...: %w", err) in service/user.go
+```
+
+Junie reads `JUNIE.md` (present at the repository root) for team conventions and applies changes following the project's coding guidelines.
+
+#### 5.6 — Manual IDE fix
+
+For trivial or purely stylistic changes, apply fixes directly in your editor without invoking an AI agent. This is often the fastest path for:
+
+- Renaming a variable
+- Rewording a comment or error message
+- Adding a missing blank line or import
+
+Use Copilot or Junie inline completions (`Tab` to accept) to speed up edits if helpful.
+
+#### 5.7 — Re-trigger review
 
 After making changes, push the updated branch — CI will re-run automatically and Copilot will review the new push. The cycle returns to [Step 4](#step-4--code-review) until all feedback is addressed and the PR is approved.
 
-#### 5.4 — Merge
+#### 5.8 — Merge
 
 Once approved and all CI checks pass, merge the PR. The branch ruleset restricts merging to **squash only** — GitHub will squash all commits into a single commit on `main`.
 
@@ -587,7 +663,7 @@ Move the Jira ticket to **Done** (or the equivalent closed status on your board)
 | Run tests | `cd src && go test ./...` |
 | Run linter | `cd src && golangci-lint run ./...` |
 | AI review PR | `claude` → `/pr-review-toolkit:review-pr` |
-| Fix review feedback | `claude` → `fix review PR#123` |
+| Fix review feedback | Any of: `claude` → `fix review PR#123` · Copilot Agent · Codex · Cursor · GoLand+Junie · Manual IDE |
 | Archive change | `claude` → `/opsx:archive` |
 
 ### Useful skills and commands
