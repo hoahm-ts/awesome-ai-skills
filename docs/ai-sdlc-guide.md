@@ -29,98 +29,88 @@ This guide documents the team's AI-augmented SDLC. The workflow integrates Claud
 
 ```mermaid
 flowchart TD
-    Start([New Feature / Bug / Task]) --> S1
+    Start([**New Feature / Bug / Task**]) --> S1
 
-    subgraph S1["Step 1 — Gather Requirements"]
+    subgraph S1["**Step 1 - Gather Specs**"]
         direction TB
-        R1[Collect BRD · PRD · ADRs\nGoogle Drive / Confluence]
-        R2[Create Jira ticket\nLink all materials]
-        R1 --> R2
+        R1[Collect BRD, PRD, ADRs, Drive, Confluence]
+        R2[Create Jira ticket & Link docs]
+        R3["Create PR spec/{TICKET}"]
+        R1 --> R2 --> R3
     end
 
-    S1 --> ambig{Requirements\nclear?}
+    S1 --> ambig{Requirements<br>clear?}
+    
     ambig -- No --> explore
+    ambig -- Yes --> propose
 
-    subgraph S2["Step 2 — Analyze & Design"]
+    subgraph S2["**Step 2 — Analyze & Design**"]
         direction TB
-        explore["/opsx:explore\nThink-partner session"]
-        propose["/opsx:propose\nGenerate artifacts"]
-        review_art["Review artifacts\nproposal.md · design.md · tasks.md"]
+        explore["/opsx:explore {TICKET}"]
+        propose["/opsx:propose {TICKET}"]
+        create_pr["gp spec/{TICKET}"]
+        review_art["Review artifacts:<br>proposal.md, design.md, tasks.md"]
+        
         explore --> propose
-        propose --> review_art
+        propose --> create_pr
+        create_pr --> review_art
     end
 
-    ambig -- Yes --> propose
-    review_art --> art_ok{Artifacts\napproved?}
+    review_art --> art_ok{Artifacts<br>**approved?**}
     art_ok -- Revise --> propose
-
     art_ok -- Approved --> S3
 
-    subgraph S3["Step 3 — Implement"]
+    subgraph S3["**Step 3 — Implement**"]
         direction TB
-        apply["/opsx:apply\nWork through tasks.md"]
-        codegen["make generate\noapi-codegen stubs"]
-        ide["IDE AI assist\nJunie · Copilot"]
-        apply --> codegen
-        codegen --> ide
+        apply["/opsx:apply {task name}"]
+        codegen["oapi-codegen stubs"]
+        create_feat_pr["gp feat/{TICKET}"]
+        apply --> codegen --> create_feat_pr
     end
 
     S3 --> S4
 
-    subgraph S4["Step 4 — Test"]
+    subgraph S4["**Step 4 - Code Review**"]
         direction TB
-        devup["make dev-up\nStart local deps"]
-        tests["go test ./...\nTable-driven · t.Parallel"]
-        lint["golangci-lint run ./...\nAll errors resolved"]
-        devup --> tests --> lint
+        copilot["AI Review (Copilot/TS)"]
+        skills["/pr-review-toolkit:review-pr"]
+        ci["CI checks (All Green)"]
+        human_review["Human code review"]
+        
+        copilot --> skills --> ci --> human_review
     end
 
-    lint --> tests_ok{"Tests &\nlint pass?"}
-    tests_ok -- Fix failures --> S3
+    human_review --> review_ok{"Approved &<br>CI Green?"}
 
-    tests_ok -- Pass --> S5
-
-    subgraph S5["Step 5 — Commit & PR"]
+    subgraph S5["**Step 5 - Address Feedback**"]
         direction TB
-        commit["git commit\nConventional Commits"]
-        push["git push + open PR\nPR template filled"]
-        label["labeler.yml\nAuto-labels applied"]
-        commit --> push --> label
+        fix_cmd["fix review PR#123"]
+        manual["Manual IDE Fixes"]
+        fix_cmd --- manual
     end
 
-    S5 --> S6
+    review_ok -- "Needs Changes" --> S5
+    S5 --> S4
+    
+    review_ok -- Approved --> merge["Squash merge → main<br>Branch auto-deleted"]
 
-    subgraph S6["Step 6 — Code Review"]
+    merge --> S6
+
+    subgraph S6["**Step 6 — Archive**"]
         direction TB
-        copilot["Copilot auto-review\nprotect-main.json ruleset"]
-        skills["/pr-review-toolkit\nsilent-failure-hunter · simplify"]
-        human["Human reviewer\n≥1 approval required"]
-        ci["CI checks\nall green"]
-        copilot --> skills --> human --> ci
-    end
-
-    ci --> review_ok{"Approved &\nCI green?"}
-    review_ok -- Address feedback --> S3
-
-    review_ok -- Approved --> merge["Squash merge → main\nbranch auto-deleted"]
-
-    merge --> S7
-
-    subgraph S7["Step 7 — Archive"]
-        direction TB
-        archive["/opsx:archive\nMove to openspec/changes/archive/"]
-        jira_done["Close Jira ticket\nAdd PR link as comment"]
+        archive["/opsx:archive <br><Move to openspec/changes/"]
+        jira_done["Close Jira ticket<br>Add PR link"]
         archive --> jira_done
     end
 
-    S7 --> Done([Done])
+    S6 --> Done([Done])
 
+    %% Styling
     style S1 fill:#e8f4fd,stroke:#2196F3
     style S2 fill:#f3e8fd,stroke:#9C27B0
     style S3 fill:#e8fdf0,stroke:#4CAF50
     style S4 fill:#fdf8e8,stroke:#FF9800
     style S5 fill:#fde8e8,stroke:#F44336
-    style S6 fill:#e8f0fd,stroke:#3F51B5
     style S7 fill:#f0fde8,stroke:#8BC34A
 ```
 
