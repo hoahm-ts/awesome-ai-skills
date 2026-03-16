@@ -12,13 +12,12 @@ This guide explains how to set up your development environment and use AI tools 
   - [4. MCP Integrations](#4-mcp-integrations)
   - [5. IDE Setup](#5-ide-setup)
 - [Development Process](#development-process)
-  - [Step 1 — Gather Requirements](#step-1--gather-requirements)
-  - [Step 2 — Analyze Requirements and Design](#step-2--analyze-requirements-and-design)
-  - [Step 3 — Implementation](#step-3--implementation)
-  - [Step 4 — Testing](#step-4--testing)
-  - [Step 5 — Commit and Pull Request](#step-5--commit-and-pull-request)
-  - [Step 6 — Code Review](#step-6--code-review)
-  - [Step 7 — Archive](#step-7--archive)
+  - [Step 1 — Gather Specs](#step-1--gather-specs)
+  - [Step 2 — Analyze & Design](#step-2--analyze--design)
+  - [Step 3 — Implement](#step-3--implement)
+  - [Step 4 — Code Review](#step-4--code-review)
+  - [Step 5 — Address Feedback](#step-5--address-feedback)
+  - [Step 6 — Archive](#step-6--archive)
 - [Quick Reference](#quick-reference)
 
 ---
@@ -29,99 +28,89 @@ This guide documents the team's AI-augmented SDLC. The workflow integrates Claud
 
 ```mermaid
 flowchart TD
-    Start([New Feature / Bug / Task]) --> S1
+    Start([**New Feature / Bug / Task**]) --> S1
 
-    subgraph S1["Step 1 — Gather Requirements"]
+    subgraph S1["**Step 1 - Gather Specs**"]
         direction TB
-        R1[Collect BRD · PRD · ADRs\nGoogle Drive / Confluence]
-        R2[Create Jira ticket\nLink all materials]
-        R1 --> R2
+        R1[Collect BRD, PRD, ADRs, Drive, Confluence]
+        R2[Create Jira ticket & Link docs]
+        R3["Create PR spec/{TICKET}"]
+        R1 --> R2 --> R3
     end
 
-    S1 --> ambig{Requirements\nclear?}
+    S1 --> ambig{Requirements<br>clear?}
+    
     ambig -- No --> explore
+    ambig -- Yes --> propose
 
-    subgraph S2["Step 2 — Analyze & Design"]
+    subgraph S2["**Step 2 — Analyze & Design**"]
         direction TB
-        explore["/opsx:explore\nThink-partner session"]
-        propose["/opsx:propose\nGenerate artifacts"]
-        review_art["Review artifacts\nproposal.md · design.md · tasks.md"]
+        explore["/opsx:explore {TICKET}"]
+        propose["/opsx:propose {TICKET}"]
+        create_pr["gp spec/{TICKET}"]
+        review_art["Review artifacts:<br>proposal.md, design.md, tasks.md"]
+        
         explore --> propose
-        propose --> review_art
+        propose --> create_pr
+        create_pr --> review_art
     end
 
-    ambig -- Yes --> propose
-    review_art --> art_ok{Artifacts\napproved?}
+    review_art --> art_ok{Artifacts<br>**approved?**}
     art_ok -- Revise --> propose
-
     art_ok -- Approved --> S3
 
-    subgraph S3["Step 3 — Implement"]
+    subgraph S3["**Step 3 — Implement**"]
         direction TB
-        apply["/opsx:apply\nWork through tasks.md"]
-        codegen["make generate\noapi-codegen stubs"]
-        ide["IDE AI assist\nJunie · Copilot"]
-        apply --> codegen
-        codegen --> ide
+        apply["/opsx:apply {task name}"]
+        codegen["oapi-codegen stubs"]
+        create_feat_pr["gp feat/{TICKET}"]
+        apply --> codegen --> create_feat_pr
     end
 
     S3 --> S4
 
-    subgraph S4["Step 4 — Test"]
+    subgraph S4["**Step 4 - Code Review**"]
         direction TB
-        devup["make dev-up\nStart local deps"]
-        tests["go test ./...\nTable-driven · t.Parallel"]
-        lint["golangci-lint run ./...\nAll errors resolved"]
-        devup --> tests --> lint
+        copilot["AI Review (Copilot/TS)"]
+        skills["/pr-review-toolkit:review-pr"]
+        ci["CI checks (All Green)"]
+        human_review["Human code review"]
+        
+        copilot --> skills --> ci --> human_review
     end
 
-    lint --> tests_ok{"Tests &\nlint pass?"}
-    tests_ok -- Fix failures --> S3
+    human_review --> review_ok{"Approved &<br>CI Green?"}
 
-    tests_ok -- Pass --> S5
-
-    subgraph S5["Step 5 — Commit & PR"]
+    subgraph S5["**Step 5 - Address Feedback**"]
         direction TB
-        commit["git commit\nConventional Commits"]
-        push["git push + open PR\nPR template filled"]
-        label["labeler.yml\nAuto-labels applied"]
-        commit --> push --> label
+        fix_cmd["fix review PR#123"]
+        manual["Manual IDE Fixes"]
+        fix_cmd --- manual
     end
 
-    S5 --> S6
+    review_ok -- "Needs Changes" --> S5
+    S5 --> S4
+    
+    review_ok -- Approved --> merge["Squash merge → main<br>Branch auto-deleted"]
 
-    subgraph S6["Step 6 — Code Review"]
+    merge --> S6
+
+    subgraph S6["**Step 6 — Archive**"]
         direction TB
-        copilot["Copilot auto-review\nprotect-main.json ruleset"]
-        skills["/pr-review-toolkit\nsilent-failure-hunter · simplify"]
-        human["Human reviewer\n≥1 approval required"]
-        ci["CI checks\nall green"]
-        copilot --> skills --> human --> ci
-    end
-
-    ci --> review_ok{"Approved &\nCI green?"}
-    review_ok -- Address feedback --> S3
-
-    review_ok -- Approved --> merge["Squash merge → main\nbranch auto-deleted"]
-
-    merge --> S7
-
-    subgraph S7["Step 7 — Archive"]
-        direction TB
-        archive["/opsx:archive\nMove to openspec/changes/archive/"]
-        jira_done["Close Jira ticket\nAdd PR link as comment"]
+        archive["/opsx:archive<br>Move to openspec/changes/"]
+        jira_done["Close Jira ticket<br>Add PR link"]
         archive --> jira_done
     end
 
-    S7 --> Done([Done])
+    S6 --> Done([Done])
 
+    %% Styling
     style S1 fill:#e8f4fd,stroke:#2196F3
     style S2 fill:#f3e8fd,stroke:#9C27B0
     style S3 fill:#e8fdf0,stroke:#4CAF50
     style S4 fill:#fdf8e8,stroke:#FF9800
     style S5 fill:#fde8e8,stroke:#F44336
-    style S6 fill:#e8f0fd,stroke:#3F51B5
-    style S7 fill:#f0fde8,stroke:#8BC34A
+    style S6 fill:#f0fde8,stroke:#8BC34A
 ```
 
 ---
@@ -292,20 +281,19 @@ GitHub Copilot reads its project instructions from `.github/copilot-instructions
 The full AI-augmented workflow maps to these steps:
 
 ```
-1. Gather requirements
-2. Analyze requirements and design   ← Claude Code /opsx:explore + /opsx:propose
-3. Implement                         ← Claude Code /opsx:apply + IDE
-4. Test                              ← Claude Code / Junie / Copilot
-5. Commit and open PR               ← git + GitHub
-6. Code review                       ← GitHub Copilot review + human review
-7. Archive                           ← Claude Code /opsx:archive
+1. Gather specs                      ← create Jira ticket, link docs, open spec PR
+2. Analyze & design                  ← Claude Code /opsx:explore + /opsx:propose
+3. Implement                         ← Claude Code /opsx:apply + oapi-codegen
+4. Code review                       ← AI review (Copilot) + CI + human review
+5. Address feedback                  ← Claude Code / IDE fixes
+6. Archive                           ← Claude Code /opsx:archive
 ```
 
 ---
 
-### Step 1 — Gather Requirements
+### Step 1 — Gather Specs
 
-**Goal**: collect all available context for the feature or fix before any AI session begins.
+**Goal**: collect all available context for the feature or fix and open a spec branch before any AI session begins.
 
 #### 1.1 — Collect source materials
 
@@ -340,9 +328,27 @@ Example: `Add user authentication via OAuth2`.
 > Set priority to High and link the PRD at <confluence-url>.
 > ```
 
+#### 1.3 — Create the spec branch and PR
+
+Create a dedicated branch for the spec artifacts and open a draft PR:
+
+```bash
+git checkout -b spec/TICKET-123
+git push -u origin spec/TICKET-123
+```
+
+Opening this PR early gives your team visibility that work has started. In the PR description, include the Jira ticket link using the following format in the **References** section of `.github/PULL_REQUEST_TEMPLATE.md`:
+
+```
+## References
+- **Jira:** https://your-org.atlassian.net/browse/TICKET-123
+```
+
+The OpenSpec artifacts generated in Step 2 will be committed to this branch.
+
 ---
 
-### Step 2 — Analyze Requirements and Design
+### Step 2 — Analyze & Design
 
 **Goal**: use AI to produce a structured proposal, detailed design, and implementation task list from the gathered requirements.
 
@@ -395,11 +401,21 @@ Before implementation begins, review each artifact:
 | `design.md` | Architecture follows the layering rules in `AGENTS.md`; no forbidden dependencies |
 | `tasks.md` | Tasks are small enough (≤ 2 hours each); acceptance criteria are clear and testable |
 
-Edit any file directly if adjustments are needed — Claude will read the updated versions in subsequent steps.
+#### 2.4 — Push the spec PR with artifacts
+
+Once you are satisfied with the generated artifacts, commit them to the spec branch and push:
+
+```bash
+git add openspec/
+git commit -m "spec(TICKET-123): add proposal, design, and tasks"
+git push origin spec/TICKET-123
+```
+
+The spec PR is now ready for team review before implementation begins.
 
 ---
 
-### Step 3 — Implementation
+### Step 3 — Implement
 
 **Goal**: use AI agents to write the code, following the task list generated in Step 2.
 
@@ -427,135 +443,41 @@ cd src && make generate
 
 Commit the regenerated files alongside the hand-written implementation code.
 
-#### 3.3 — IDE assistance
+> **Tip**: Use your IDE AI for focused, in-file assistance during implementation. GoLand + Junie and VS Code + GitHub Copilot both read the project instruction files (`JUNIE.md`, `.github/copilot-instructions.md`) to stay aligned with team conventions.
 
-Use your IDE's AI features for focused, in-file assistance during implementation:
+#### 3.3 — Push the feature PR
 
-| IDE | AI feature | Best used for |
-|---|---|---|
-| GoLand | Junie | Single-file inline edits, refactoring, and test generation without leaving the IDE |
-| VS Code | GitHub Copilot | Agentic multi-file edits, cross-file refactors via chat, and PR-level code review |
-
-Both tools read the project instruction files (`JUNIE.md`, `.github/copilot-instructions.md`) to stay aligned with team conventions.
-
----
-
-### Step 4 — Testing
-
-**Goal**: ensure the implementation is covered by automated tests before the PR is opened.
-
-#### 4.1 — Generate tests with AI
-
-Ask Claude Code (or your IDE AI) to generate tests for the code written in Step 3:
-
-```
-Write unit tests for the new OAuth2 handler in internal/handler/auth.go.
-Cover the happy path, invalid token, and expired token cases.
-```
-
-Follow the testing conventions in `AGENTS.md`:
-- Table-driven tests with `t.Run` subtests.
-- `give` / `want` field naming.
-- `t.Parallel()` on independent tests.
-- `require.ErrorIs` / `require.Equal` for assertions.
-
-#### 4.2 — Start local dependencies
-
-Many services depend on MariaDB, Redis, or Kafka. Start them before running tests:
+Once implementation is complete, commit and push to open the feature PR:
 
 ```bash
-make dev-up
-```
-
-This spins up the containers defined in `docker/docker-compose.dev.yml`. Run `make dev-down` when you are done to tear them down.
-
-#### 4.3 — Run the tests
-
-```bash
-cd src && go test ./...
-```
-
-Or use the Makefile target if one is defined:
-
-```bash
-cd src && make test
-```
-
-Fix any failures before proceeding to Step 5. If a failure reveals a design issue, return to Step 2 and update the artifacts accordingly.
-
-#### 4.4 — Run the linter
-
-```bash
-cd src && golangci-lint run ./...
-```
-
-Or via the Makefile:
-
-```bash
-cd src && make lint
-```
-
-All lint errors must be resolved before the PR is opened.
-
----
-
-### Step 5 — Commit and Pull Request
-
-**Goal**: commit the changes and open a pull request following team conventions.
-
-#### 5.1 — Create the commit
-
-Use [Conventional Commits](https://www.conventionalcommits.org/) format:
-
-```bash
-# Stage specific files — avoid git add . to prevent accidentally committing
-# secrets, .env files, or large generated binaries.
 git add src/ openspec/
 git commit -m "feat(auth): add OAuth2 login via Google identity provider"
+git push origin feat/TICKET-123
 ```
 
-Common prefixes:
-
-| Prefix | Use when |
-|---|---|
-| `feat:` | Adding a new feature |
-| `fix:` | Fixing a bug |
-| `docs:` | Documentation changes only |
-| `refactor:` | Code restructuring without behaviour change |
-| `test:` | Adding or updating tests |
-| `chore:` | Tooling, CI, dependency updates |
-
-#### 5.2 — Push and open the PR
-
-```bash
-git push origin feat/AGI-123
-```
-
-Open the pull request on GitHub. Use the PR title format:
+Open the pull request on GitHub using the PR title format:
 
 ```
-AGI-123: Add OAuth2 login via Google identity provider
+TICKET-123: Add OAuth2 login via Google identity provider
 ```
 
-Fill in all sections of `.github/PULL_REQUEST_TEMPLATE.md`:
-- **Motivation / problem statement**
-- **What changed**
-- **How to test**
-- **Migration / rollout notes** (schema changes, feature flags, deployment steps)
-
-#### 5.3 — Automatic labelling
-
-The `.github/workflows/labeler.yml` workflow automatically applies labels to the PR based on the branch name and changed files. No manual action required — verify the labels look correct after the workflow runs.
+Fill in all sections of `.github/PULL_REQUEST_TEMPLATE.md`. The `.github/workflows/labeler.yml` workflow automatically applies labels based on the branch name and changed files.
 
 ---
 
-### Step 6 — Code Review
+### Step 4 — Code Review
 
 **Goal**: validate the change is correct, safe, and follows team conventions before merging.
 
-#### 6.1 — Claude Code review skills (optional, before opening the PR)
+#### 4.1 — AI review with GitHub Copilot (automatic)
 
-Before requesting human review, use the built-in review skills inside Claude Code to catch common issues early:
+The `.github/rulesets/protect-main.json` ruleset configures GitHub to **automatically request a Copilot code review** on every new push and draft PR. Copilot will post inline comments and a summary review within a few minutes of the PR being opened.
+
+Review the Copilot feedback and address any comments you agree with before requesting human review.
+
+#### 4.2 — Claude Code review skills
+
+Use the built-in review skills inside Claude Code to catch additional issues early:
 
 ```
 /pr-review-toolkit:review-pr
@@ -569,13 +491,19 @@ Specialist sub-skills that run automatically as part of the toolkit, or can be i
 | `pr-review-toolkit:code-simplifier` | Over-engineered code, unnecessary complexity |
 | `pr-review-toolkit:code-reviewer` | Style violations, AGENTS.md guideline breaches |
 
-#### 6.2 — GitHub Copilot review (automatic)
+#### 4.3 — CI checks
 
-The `.github/rulesets/protect-main.json` ruleset configures GitHub to **automatically request a Copilot code review** on every new push and draft PR. Copilot will post inline comments and a summary review within a few minutes of the PR being opened.
+All CI checks must pass before the PR can be merged. The CI pipeline runs tests and linting automatically on every push:
 
-Review the Copilot feedback and address any comments you agree with before requesting human review.
+```bash
+# Run locally to pre-validate before pushing
+cd src && go test ./...
+cd src && golangci-lint run ./...
+```
 
-#### 6.3 — Human review
+Fix any failures. If a failure reveals a design issue, return to Step 2 and update the artifacts accordingly.
+
+#### 4.4 — Human review
 
 Assign the PR to a team reviewer. The branch ruleset requires **at least one approval** before merging.
 
@@ -585,18 +513,36 @@ Reviewers should verify:
 - Tests cover the new or changed behaviour.
 - No secrets, credentials, or PII are committed.
 
-#### 6.4 — Fix review feedback
+---
 
-For code-level feedback, use Claude Code or your IDE AI to apply fixes quickly:
+### Step 5 — Address Feedback
+
+**Goal**: resolve all review comments before merging.
+
+#### 5.1 — Apply AI-assisted fixes
+
+For code-level feedback, use Claude Code to apply fixes quickly:
+
+```
+fix review PR#123
+```
+
+Or describe the change explicitly:
 
 ```
 The reviewer flagged that the handler is calling the repository directly.
 Fix it by routing the call through the domain service instead.
 ```
 
-After making changes, push the updated branch — CI will re-run automatically and Copilot will review the new push.
+#### 5.2 — Manual IDE fixes
 
-#### 6.5 — Merge
+For smaller or stylistic changes, apply fixes directly in your IDE. Use the Copilot or Junie inline suggestions to speed up edits.
+
+#### 5.3 — Re-trigger review
+
+After making changes, push the updated branch — CI will re-run automatically and Copilot will review the new push. The cycle returns to [Step 4](#step-4--code-review) until all feedback is addressed and the PR is approved.
+
+#### 5.4 — Merge
 
 Once approved and all CI checks pass, merge the PR. The branch ruleset restricts merging to **squash only** — GitHub will squash all commits into a single commit on `main`.
 
@@ -604,11 +550,11 @@ The head branch is automatically deleted after merge.
 
 ---
 
-### Step 7 — Archive
+### Step 6 — Archive
 
 **Goal**: close out the OpenSpec change once the PR is merged.
 
-#### 7.1 — Run `/opsx:archive`
+#### 6.1 — Run `/opsx:archive`
 
 ```
 /opsx:archive
@@ -621,7 +567,7 @@ Claude will:
 4. Move the change directory to `openspec/changes/archive/YYYY-MM-DD-<name>/`.
 5. Display a summary of the archive operation.
 
-#### 7.2 — Update the Jira ticket
+#### 6.2 — Update the Jira ticket
 
 Move the Jira ticket to **Done** (or the equivalent closed status on your board). Add a comment with the PR link for traceability.
 
@@ -631,14 +577,17 @@ Move the Jira ticket to **Done** (or the equivalent closed status on your board)
 
 | Step | Command / Action |
 |---|---|
-| Explore requirements | `claude` → `/opsx:explore` |
-| Propose change | `claude` → `/opsx:propose` |
-| Implement change | `claude` → `/opsx:apply` |
+| Gather specs | Create Jira ticket, link docs, `git checkout -b spec/TICKET-123` |
+| Explore requirements | `claude` → `/opsx:explore TICKET-123` |
+| Propose change | `claude` → `/opsx:propose TICKET-123` |
+| Push spec PR | `git push origin spec/TICKET-123` then open on GitHub |
+| Implement change | `claude` → `/opsx:apply <task name>` |
 | Regenerate API stubs | `cd src && make generate` |
+| Push feature PR | `git push origin feat/TICKET-123` then open on GitHub |
 | Run tests | `cd src && go test ./...` |
 | Run linter | `cd src && golangci-lint run ./...` |
-| Create commit | `git commit -m "feat(scope): description"` |
-| Open PR | `git push origin feat/TICKET-ID` then open on GitHub |
+| AI review PR | `claude` → `/pr-review-toolkit:review-pr` |
+| Fix review feedback | `claude` → `fix review PR#123` |
 | Archive change | `claude` → `/opsx:archive` |
 
 ### Useful skills and commands
