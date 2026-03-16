@@ -20,9 +20,9 @@ lint-docker:
 
 # ── Build ───────────────────────────────────────────────────────────────────────
 
-# Build production Docker image (build context is this directory)
+# Build production Docker image for linux/amd64 and linux/arm64 (requires docker buildx)
 docker-build:
-	docker build -f docker/Dockerfile -t awesome-ai-skills:local .
+	docker buildx build --platform linux/amd64,linux/arm64 -f docker/Dockerfile -t awesome-ai-skills:local .
 
 build:
 	go build -o bin/api ./cmd/api/

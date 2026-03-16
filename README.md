@@ -71,6 +71,7 @@ repo root/
 │   ├── PULL_REQUEST_TEMPLATE.md     # Default pull request template
 │   └── workflows/
 │       ├── ci.yml                   # CI workflow: lint, test, and coverage reporting
+│       ├── docker.yml               # Docker workflow: multi-arch image build and push via buildx
 │       └── labeler.yml              # GitHub Actions workflow to auto-label pull requests
 └── src/                             # Go module root
     ├── go.mod
