@@ -5,6 +5,7 @@ This guide explains how to set up your development environment and use AI tools 
 ## Table of Contents
 
 - [Overview](#overview)
+- [AI Tool Selection Guide](#ai-tool-selection-guide)
 - [Prerequisites](#prerequisites)
   - [1. Claude Code CLI](#1-claude-code-cli)
   - [2. OpenSpec](#2-openspec)
@@ -115,6 +116,22 @@ flowchart TD
     style S5 fill:#fde8e8,stroke:#F44336
     style S6 fill:#f0fde8,stroke:#8BC34A
 ```
+
+---
+
+## AI Tool Selection Guide
+
+Choose the right AI tool based on the task at hand. Mixing tools is encouraged — use whichever fits the context.
+
+| Tool | Best for |
+|---|---|
+| **Atlassian Rovo** | Collecting and structuring requirements; converting Jira tickets to Markdown documents |
+| **Gemini / ChatGPT / any AI chat** | Quick ad-hoc questions, multi-purpose tasks, planning, brainstorming; converting PDFs to Markdown; generating diagrams (PlantUML, Mermaid) |
+| **GitHub Copilot Agent** | Simple tasks and quick bug fixes; supports multiple simultaneous tasks directly in GitHub |
+| **GoLand + Junie** | JetBrains-native AI assistance; well-suited for complicated, multi-step tasks inside the IDE |
+| **Claude Code** | Fully automated, end-to-end implementation; can run multiple tasks simultaneously from the terminal |
+
+> **Tip**: For new features, start with **Atlassian Rovo** or an AI chat tool to clarify requirements, then hand off to **Claude Code** or **GoLand + Junie** for implementation.
 
 ---
 
@@ -668,6 +685,8 @@ Move the Jira ticket to **Done** (or the equivalent closed status on your board)
 
 ### Useful skills and commands
 
+The following skills are used directly during development:
+
 | Skill / Command | Purpose |
 |---|---|
 | `/opsx:explore` | Think through ideas before proposing a change |
@@ -677,8 +696,5 @@ Move the Jira ticket to **Done** (or the equivalent closed status on your board)
 | `/pr-review-toolkit:review-pr` | Full PR review using specialist sub-agents |
 | `/pr-review-toolkit:silent-failure-hunter` | Hunt for swallowed errors and silent failures |
 | `/pr-review-toolkit:code-simplifier` | Simplify over-engineered code |
-| `/project-status-summary` | Generate a project health report from Jira, Confluence, Slack |
-| `/weekly-bottleneck-report` | Generate a sprint bottleneck and delay report |
-| `/estimate-release` | Estimate the release date for a single Jira ticket |
 
-See [README.md](../README.md#using-claude-code-skills) for full documentation of each skill.
+For the full list of available custom skills (including project-management, reporting, and estimation skills), see [claude-code-skills.md](claude-code-skills.md).
