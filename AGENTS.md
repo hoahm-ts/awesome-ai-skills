@@ -9,6 +9,7 @@ This file is the **canonical reference** for all AI coding agents and human cont
 | Stack | Convention File |
 |---|---|
 | Go (style, testing, architecture) | [`docs/conventions/golang-conventions.md`](docs/conventions/golang-conventions.md) |
+| Python (style, testing, architecture) | [`docs/conventions/python-conventions.md`](docs/conventions/python-conventions.md) |
 | Logging, Errors & Observability | [`docs/conventions/logging-conventions.md`](docs/conventions/logging-conventions.md) |
 | PostgreSQL & GORM | [`docs/conventions/postgresql-conventions.md`](docs/conventions/postgresql-conventions.md) |
 | Kafka | [`docs/conventions/kafka-conventions.md`](docs/conventions/kafka-conventions.md) |
