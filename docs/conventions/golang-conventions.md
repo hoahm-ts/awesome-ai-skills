@@ -83,6 +83,18 @@ domain        ➜  shared ports/types + infrastructure abstractions
 
 - **Domain logic**: unit tests inside the domain package. Aim for high coverage of business rules.
 - **Handler/command logic**: prefer table-driven tests for input validation and response mapping; use fakes or mocks for domain services via interfaces.
+- **Mocking interfaces with gomock**: use [gomock](https://github.com/uber-go/mock) to generate mock implementations for interfaces. Run `mockgen` to produce a mock source file, then use the generated mock in tests:
+  ```go
+  //go:generate mockgen -source=service.go -destination=mocks/mock_service.go -package=mocks
+  ```
+  Import and use the generated mock in tests:
+  ```go
+  ctrl := gomock.NewController(t)
+  defer ctrl.Finish()
+  mockSvc := mocks.NewMockMyService(ctrl)
+  mockSvc.EXPECT().DoSomething(gomock.Any()).Return(nil)
+  ```
+  Always commit generated mock files alongside the interface source so that CI does not require a generation step.
 - **Integration adapters**: unit-test adapters with mocked HTTP/SDK responses. Do not call real external services in automated tests.
 - Avoid flaky tests; tests must be deterministic and independent of external state.
 - **Multi-tenancy**: the product supports multi-tenancy. Unit tests must use general, tenant-agnostic seed data. Features and test scenarios must not depend on or assume any specific client or tenant. If a requirement is client-specific, the implementation must remain general and the tests must validate behaviour using generic data only.
@@ -155,6 +167,7 @@ Before requesting a review, verify:
 
 ### Interfaces & Types
 
+- **Define interfaces before implementation**: declare Go interfaces **before** their concrete implementations. Write the interface (port) first, then implement the struct that satisfies it. This enforces interface-first design and makes the contract explicit from the start.
 - **Pointers to interfaces**: almost never use a pointer to an interface; pass interfaces as values.
 - **Verify interface compliance** at compile time using blank identifier assignments:
   ```go
