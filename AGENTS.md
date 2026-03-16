@@ -1,6 +1,6 @@
 # AGENTS.md — Unified Instructions for AI Coding Agents & Contributors
 
-This file is the **canonical reference** for all AI coding agents and human contributors working in this repository. All agent-specific instruction files (`CLAUDE.md`, `CODEX.md`, `JUNIE.md`, `.cursorrules`, `.github/copilot-instructions.md`) should be kept consistent with the guidelines here.
+This file is the **canonical reference** for all AI coding agents and human contributors working in this repository. All agent-specific instruction files (`CLAUDE.md`, `CODEX.md`, `JUNIE.md`, `.cursorrules`, `.github/copilot-instructions.md`) delegate to this file as the single source of truth — do not duplicate content from here into those files.
 
 ## Stack-Specific Conventions
 
