@@ -45,3 +45,9 @@ out/
 ._*
 .Spotlight-V100
 .Trashes
+
+# Local files
+local_files/
+
+# Claude local settings
+.claude/settings.local.json
