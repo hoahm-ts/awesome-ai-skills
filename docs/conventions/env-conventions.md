@@ -125,7 +125,9 @@ ENV \
     RATE_LIMIT_BURST_LIMIT=100 \
     # Workers
     WORKER_COUNT=4 \
-    MAX_RETRY_AMOUNT=3
+    MAX_RETRY_AMOUNT=3 \
+    # Observability backend — "gcp" (default) or "datadog"
+    OTEL_EXPORTER_BACKEND=gcp
 ```
 
 ---
