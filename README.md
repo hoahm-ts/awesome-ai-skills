@@ -14,6 +14,7 @@ A curated collection of configuration files, instructions, and best practices fo
 - [Using Claude Code Skills](#using-claude-code-skills)
 - [AI-Augmented SDLC Guide](docs/ai-sdlc-guide.md)
 - [Repository Initialisation](docs/repository-initialisation.md)
+- [Claude Desktop MCP Integration & Custom Skills Guide](docs/claude-desktop-mcp-guide.md)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -30,16 +31,20 @@ repo root/
 │   ├── architecture.md              # High-level system architecture overview
 │   ├── ai-sdlc-guide.md             # AI-augmented SDLC: environment setup and development process
 │   └── repository-initialisation.md # Step-by-step guide to initialise a new repository
+│   └── claude-desktop-mcp-guide.md  # Guide: connect Claude Desktop to MCP tools & create custom skills
+│   ├── repository-initialisation.md # Step-by-step guide to initialise a new repository
 ├── openspec/                        # Spec-driven workflow artifacts
 │   └── config.yaml
 ├── .claude/
 │   ├── settings.json                # Claude project settings
 │   ├── hooks/                       # Claude lifecycle hooks
 │   ├── commands/                    # Claude custom slash commands
+│   │   ├── eng-team-analysis.md     # Engineering team analysis command
 │   │   ├── estimate-release.md      # Per-ticket release estimation command
 │   │   ├── project-status-summary.md # Project status summary command
 │   │   └── weekly-bottleneck-report.md # Weekly sprint bottleneck report command
 │   └── skills/                      # Claude reusable skills
+│       ├── eng-team-analysis/       # Engineering team analysis skill
 │       ├── project-status-summary/  # Project status summary skill
 │       └── weekly-bottleneck-report/ # Weekly bottleneck report skill
 ├── .github/
@@ -130,6 +135,7 @@ Claude Code skills live in `.claude/skills/`. Each skill is a self-contained Mar
 
 | Skill | Slash command | Description |
 |-------|---------------|-------------|
+| `eng-team-analysis` | `/eng-team-analysis` | Deep-dive engineering team analysis — collects Jira tickets, Slack signals, and meeting transcripts then produces activity clusters, stakeholder maps, JTBD decomposition, AI readiness ratings, and a final report |
 | `project-status-summary` | `/project-status-summary` | Aggregate project health signals from Slack, Jira, Confluence, and email into a structured executive summary, then post it to Slack |
 | `weekly-bottleneck-report` | `/weekly-bottleneck-report` | Generate an internal engineering report highlighting sprint delays, bottlenecks, over-assignment, QA queue pressure, stale items, and release timeline estimates |
 | `estimate-release` | `/estimate-release` | Deep-dive release estimation for a single Jira ticket — analyses subtasks, developer workload, QA queue position, and sprint slippage |
@@ -137,6 +143,65 @@ Claude Code skills live in `.claude/skills/`. Each skill is a self-contained Mar
 | `openspec-propose` | `/opsx:propose` | Propose a new change and generate all artifacts (proposal, design, tasks) in one step |
 | `openspec-apply-change` | `/opsx:apply` | Implement tasks from an existing OpenSpec change |
 | `openspec-archive-change` | `/opsx:archive` | Archive a completed change |
+
+### How to use the `eng-team-analysis` skill
+
+**Option A — natural language**
+
+Ask Claude in plain English:
+
+```
+Run an engineering team analysis for the tpbank project on the CO board.
+```
+
+To extend the time window:
+
+```
+Run an engineering team analysis for the payments project on the ENG board for the last 60 days.
+```
+
+**Option B — slash command**
+
+```
+/eng-team-analysis                                # all defaults: tpbank, CO board, 30 days, summary to your DM
+/eng-team-analysis tpbank                         # explicit project, default board and window
+/eng-team-analysis tpbank CO                      # explicit project and board, default window
+/eng-team-analysis tpbank CO 60                   # 60-day window
+/eng-team-analysis payments ENG 90                # different project with 90-day window
+/eng-team-analysis tpbank CO 30 @john             # send summary DM to @john
+/eng-team-analysis tpbank CO 30 #eng-analysis     # post summary to a channel
+```
+
+**Parameters**
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `project` | ❌ | `tpbank` | Project name used to filter Jira, Slack, and Drive |
+| `board` | ❌ | `CO` | Jira board name or key |
+| `window` | ❌ | `30` | Look-back window in days |
+| `channel` | ❌ | user's own DM | Slack destination for the condensed summary — a channel (`#name`) or DM handle (`@name`) |
+
+**What it does**
+
+1. Pulls all Jira tickets on the `{board}` board updated in the last `{window}` days (paginated, no cap) and computes TAT metrics per ticket.
+2. Searches Slack channels and messages referencing `{project}` to surface requests, decisions, and internal clients.
+3. *(Optional)* Reads Google Drive meeting transcripts for context not captured in Jira or Slack.
+4. Classifies tickets into 6–8 non-overlapping activity clusters named by what the work accomplishes.
+5. Maps every stakeholder who requested work, grouped by role, with implicit success measures.
+6. Extracts Jobs-To-Be-Done per cluster, re-clusters them by demand-side structure, and produces a JTBD × Activity matrix.
+7. Rates each JTBD cluster HIGH / MEDIUM / LOW for AI automation potential and maps it to a three-phase roadmap.
+8. Generates a full PDF-ready report saved to `local_files/eng-analysis/{project}-{YYYY-MM-DD}-eng-team-analysis.md`.
+9. **Sends a condensed summary to Slack via the `channel` parameter** (defaults to the user's own DM if `channel` is not provided). If Slack is not connected, displays the summary in chat.
+
+**Prerequisites**
+
+The skill requires MCP integrations for the sources you want to search:
+- **Jira** *(required)* — [Atlassian Jira MCP server](https://github.com/sooperset/mcp-atlassian)
+- **Slack** *(optional)* — [Slack MCP server](https://github.com/modelcontextprotocol/servers/tree/main/src/slack); enriches stakeholder and request data
+- **Google Drive** *(optional)* — Google Drive MCP; surfaces meeting transcript context
+- **Google Calendar** *(optional)* — enriches deadline and milestone data
+
+If Jira is not connected, the skill stops and asks you to connect it. All other sources are optional — if unavailable the skill notes the gap and continues.
 
 ### How to use the `project-status-summary` skill
 
